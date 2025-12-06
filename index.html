@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="referrer" content="no-referrer" />
+    <meta name="keywords" content="免费电影,高清影视,在线观看,CineStream,美剧,韩剧,动漫,综艺,P2P加速" />
+    <meta name="description" content="CineStream AI - 您的智能免费影视库。提供海量高清电影、电视剧、动漫和综艺在线观看，支持智能P2P加速与AI助手互动。" />
     <title>CineStream AI - 免费高清影视 | 智能P2P加速</title>
     
     <!-- Tailwind CSS -->
@@ -36,12 +38,28 @@
             },
         }
     </script>
+    
+    <!-- Polyfill for process (needed for inline script env) -->
+    <script>
+        window.process = { env: { API_KEY: '' } };
+    </script>
 
     <!-- Player Dependencies -->
     <script src="https://cdn.jsdelivr.net/npm/artplayer@5.3.0/dist/artplayer.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <!-- P2P Engine (SwarmCloud/CDNBye) -->
     <script src="https://cdn.jsdelivr.net/npm/swarmcloud-hls@latest/dist/p2p-engine.min.js"></script>
+    
+    <!-- React Dependencies (UMD Global) -->
+    <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for in-browser compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- DNS Prefetch for Image Proxy -->
+    <link rel="dns-prefetch" href="https://wsrv.nl">
+    <link rel="preconnect" href="https://wsrv.nl">
 
     <style>
         body {
@@ -54,9 +72,30 @@
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 4px; }
+        
+        /* Mobile visible scrollbar trajectory */
+        .visible-scrollbar::-webkit-scrollbar {
+            height: 3px; /* Thin horizontal bar */
+            display: block;
+        }
+        .visible-scrollbar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            margin: 0 10px;
+        }
+        .visible-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(34, 197, 94, 0.4); /* Brand color semi-transparent */
+            border-radius: 10px;
+        }
+        .visible-scrollbar {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(34, 197, 94, 0.4) rgba(255, 255, 255, 0.05);
+        }
+
         .line-clamp-3 {
             display: -webkit-box;
             -webkit-line-clamp: 3;
@@ -67,15 +106,24 @@
 <script type="importmap">
 {
   "imports": {
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "@google/genai": "https://esm.run/@google/genai",
     "react/": "https://aistudiocdn.com/react@^19.2.1/",
-    "react": "https://aistudiocdn.com/react@^19.2.1"
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/"
   }
 }
 </script>
 </head>
 <body class="text-gray-200">
     <div id="root"></div>
+    <!-- Load scripts in dependency order -->
+    <script type="text/babel" data-presets="typescript,react" src="types.ts"></script>
+    <script type="text/babel" data-presets="typescript,react" src="services/vodService.ts"></script>
+    <script type="text/babel" data-presets="typescript,react" src="components/ImageWithFallback.tsx"></script>
+    <script type="text/babel" data-presets="typescript,react" src="components/VideoPlayer.tsx"></script>
+    <script type="text/babel" data-presets="typescript,react" src="components/MovieInfoCard.tsx"></script>
+    <script type="text/babel" data-presets="typescript,react" src="components/GeminiChat.tsx"></script>
+    <script type="text/babel" data-presets="typescript,react" src="App.tsx"></script>
+    <script type="text/babel" data-presets="typescript,react" src="index.tsx"></script>
 </body>
 </html>

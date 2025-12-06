@@ -37,16 +37,17 @@ const NavBar = ({ activeTab, onTabChange }: { activeTab: string, onTabChange: (t
     ];
 
     return (
-        <nav className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-xl border-b border-white/5 transition-all duration-300">
-            <div className="container mx-auto px-4 max-w-[1400px]">
-                <div className="flex items-center justify-between h-16 relative">
+        <nav className="fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-xl border-b border-white/5 transition-all duration-300">
+            <div className="container mx-auto max-w-[1400px]">
+                {/* Desktop Layout */}
+                <div className="hidden lg:flex items-center justify-between h-16 px-4 relative">
                     <div className="flex items-center gap-2 cursor-pointer z-20" onClick={() => onTabChange('home')}>
                         <span className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-brand to-cyan-400">
                             CineStream
                         </span>
                     </div>
 
-                    <div className="hidden lg:flex items-center gap-1 absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                    <div className="flex items-center gap-1 absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
                         {navItems.map(item => (
                             <button
                                 key={item.id}
@@ -62,20 +63,40 @@ const NavBar = ({ activeTab, onTabChange }: { activeTab: string, onTabChange: (t
                             </button>
                         ))}
                     </div>
+                    
+                    {/* Placeholder for right side to balance layout if needed */}
+                    <div className="w-24"></div> 
+                </div>
 
-                    <div className="lg:hidden flex-1 flex items-center justify-end gap-2 overflow-x-auto no-scrollbar ml-2 mask-linear-fade">
-                         {navItems.map(item => (
-                            <button
-                                key={item.id}
-                                onClick={() => onTabChange(item.id)}
-                                className={`flex-shrink-0 flex items-center justify-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
-                                    activeTab === item.id ? 'bg-white/10 text-brand' : 'text-gray-400'
-                                }`}
-                            >
-                                {React.cloneElement(item.icon, { className: 'w-4 h-4' })}
-                                <span>{item.label}</span>
-                            </button>
-                        ))}
+                {/* Mobile Layout - Two Rows */}
+                <div className="lg:hidden flex flex-col pb-0">
+                    {/* Row 1: Logo */}
+                    <div className="flex items-center justify-between h-14 px-4">
+                         <div className="flex items-center gap-2 cursor-pointer" onClick={() => onTabChange('home')}>
+                            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-brand to-cyan-400">
+                                CineStream
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Row 2: Navigation Items (Horizontal Scroll) */}
+                    <div className="px-4 w-full overflow-x-auto visible-scrollbar mask-linear-fade pb-2">
+                         <div className="flex items-center gap-3 min-w-max pb-1">
+                             {navItems.map(item => (
+                                <button
+                                    key={item.id}
+                                    onClick={() => onTabChange(item.id)}
+                                    className={`flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border ${
+                                        activeTab === item.id 
+                                        ? 'bg-brand text-black border-brand shadow-[0_0_8px_rgba(34,197,94,0.4)]' 
+                                        : 'bg-white/5 text-gray-300 border-white/5'
+                                    }`}
+                                >
+                                    {React.cloneElement(item.icon, { className: 'w-4 h-4' })}
+                                    <span>{item.label}</span>
+                                </button>
+                            ))}
+                         </div>
                     </div>
                 </div>
             </div>
@@ -230,7 +251,7 @@ const HorizontalSection = ({ title, items, id, onItemClick }: {
 
           {/* Negative margin on mobile to allow edge-to-edge scrolling feel within a padded container */}
           <div className="-mx-4 md:mx-0 px-4 md:px-0">
-              <div ref={scrollRef} className="flex gap-3 md:gap-4 overflow-x-auto pb-4 no-scrollbar scroll-smooth">
+              <div ref={scrollRef} className="flex gap-3 md:gap-4 overflow-x-auto pb-4 visible-scrollbar scroll-smooth">
                   {items.map((item) => (
                       <div key={item.vod_id} onClick={() => onItemClick(item)} className="flex-shrink-0 w-28 sm:w-36 md:w-44 cursor-pointer group relative">
                           <div className="aspect-[2/3] rounded-lg md:rounded-xl overflow-hidden bg-gray-900 border border-white/10 relative shadow-lg group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1">
@@ -651,7 +672,7 @@ const App: React.FC = () => {
   }, [currentEpisodeIndex, episodes.length]);
 
   return (
-      <div className="relative min-h-screen pb-20 overflow-x-hidden font-sans pt-16">
+      <div className="relative min-h-screen pb-20 overflow-x-hidden font-sans pt-28 lg:pt-16">
           <NavBar activeTab={activeTab} onTabChange={handleTabChange} />
 
           {/* Global Loading Overlay */}
