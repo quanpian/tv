@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 
 interface VideoPlayerProps {
@@ -33,40 +34,55 @@ const AD_PATTERNS = [
     '/tp/ad', 'cs.html', '111111', '222222', '333333', 
     '444444', '777777', '888888', '000000', 'yibo', 'daohang',
     'aybc', 'qq2', 'hls_ad', 'm3u8_a', '989898', '777999', 
-    'ts_ad', 'ad.ts', 'ad_0', 'ad_1', 'ad_2', 'xiaoshuo'
+    'ts_ad', 'ad.ts', 'ad_0', 'ad_1', 'ad_2', 'xiaoshuo',
+    'wangzhuan', 'gif', '.mp4'
 ];
 
-// Simplified Ad Filter: Just remove blatant text ads from manifest.
-// Do NOT buffer or rewrite segments extensively to avoid breaking continuity.
+/**
+ * Filter Ads from M3U8 Content (Enhanced Strategy)
+ * Removes SCTE35 markers, CUE-OUT/IN blocks, and DISCONTINUITY tags to prevent stuttering.
+ */
 function filterAdsFromM3U8(m3u8Content: string): string {
     if (!m3u8Content) return '';
     const lines = m3u8Content.split('\n');
     const filteredLines: string[] = [];
+    let inAdBlock = false;
     
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
-        if (!line) continue;
-
-        // Skip known ad tags
-        if (line.includes('EXT-X-CUE-OUT') || line.includes('EXT-X-CUE-IN') || line.includes('SCTE35')) {
+        
+        // Strategy 1: Standard Ad Markers (SCTE35 / CUE-OUT)
+        if (line.includes('EXT-X-CUE-OUT') || line.includes('SCTE35') || (line.includes('DATERANGE') && line.includes('SCTE35'))) { 
+            inAdBlock = true; 
+            continue; 
+        }
+        if (line.includes('EXT-X-CUE-IN')) { 
+            inAdBlock = false; 
+            continue; 
+        }
+        
+        // Strategy 2: Remove Discontinuities (Crucial for smooth playback after removal)
+        // If we remove segments, the timeline breaks. Removing discontinuity tags forces the player to merge the timeline.
+        if (line.includes('EXT-X-DISCONTINUITY')) {
             continue;
         }
 
-        // If it looks like a URL, check pattern
-        if (!line.startsWith('#')) {
+        if (inAdBlock) continue;
+
+        // Strategy 3: Keyword/Pattern Matching (For CMS specific ads)
+        if (line && !line.startsWith('#')) {
              const lowerUrl = line.toLowerCase();
              if (AD_PATTERNS.some(p => lowerUrl.includes(p))) {
-                 // It's an ad URL. Skip it.
-                 // Also try to remove the preceding EXTINF if it exists in the output array
-                 // This is a naive cleanup but safer than complex buffering
-                 if (filteredLines.length > 0 && filteredLines[filteredLines.length - 1].startsWith('#EXTINF')) {
+                 console.log(`[AdBlock] Removed segment: ${line}`);
+                 // Remove the previous line if it was an EXTINF tag
+                 if (filteredLines.length > 0 && filteredLines[filteredLines.length - 1].includes('#EXTINF')) {
                      filteredLines.pop();
                  }
                  continue;
              }
         }
         
-        filteredLines.push(line);
+        filteredLines.push(lines[i]);
     }
     
     return filteredLines.join('\n');
@@ -220,24 +236,38 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
                   const P2PEngine = (window as any).P2PEngine;
 
                   if (Hls.isSupported()) {
+                      // Custom Loader to Intercept and Modify M3U8 Content BEFORE Parsing
+                      class CustomLoader extends Hls.DefaultConfig.loader {
+                          constructor(config: any) {
+                              super(config);
+                          }
+
+                          load(context: any, config: any, callbacks: any) {
+                              if (context.type === 'manifest' || context.type === 'level') {
+                                  const onSuccess = callbacks.onSuccess;
+                                  callbacks.onSuccess = function (response: any, stats: any, ctx: any) {
+                                      if (response.data && typeof response.data === 'string') {
+                                          try { 
+                                              response.data = filterAdsFromM3U8(response.data); 
+                                          } catch (e) {
+                                              console.warn("Ad filtering failed", e);
+                                          }
+                                      }
+                                      return onSuccess(response, stats, ctx, null);
+                                  };
+                              }
+                              super.load(context, config, callbacks);
+                          }
+                      }
+
                       const hls = new Hls({
                           debug: false,
                           enableWorker: true,
-                          // Increase buffer size to reduce stuttering
-                          maxBufferLength: 30,
+                          maxBufferLength: 60,
                           maxMaxBufferLength: 600,
                           startLevel: -1,
                           autoStartLoad: true,
-                          // Use xhrSetup to BLOCK ad segments at the network level
-                          xhrSetup: function (xhr: XMLHttpRequest, url: string) {
-                              const lowerUrl = url.toLowerCase();
-                              if (AD_PATTERNS.some(pattern => lowerUrl.includes(pattern))) {
-                                  // Abort requests to ad segments. 
-                                  // HLS.js will see this as a network error for that segment and skip to the next one.
-                                  xhr.abort();
-                                  return;
-                              }
-                          }
+                          pLoader: CustomLoader, // Inject the Ad-Blocking Loader
                       });
 
                       if (P2PEngine) {
