@@ -1,3 +1,5 @@
+
+
 import { Episode, VodDetail, ApiResponse, ActorItem, RecommendationItem, VodItem } from '../types';
 
 const API_BASE = 'https://caiji.dyttzyapi.com/api.php/provide/vod';
@@ -8,30 +10,26 @@ const API_BASE = 'https://caiji.dyttzyapi.com/api.php/provide/vod';
 const fetchWithProxy = async (params: URLSearchParams): Promise<ApiResponse> => {
   const targetUrl = `${API_BASE}?${params.toString()}`;
   
-  // Strategy: Try primary proxy (corsproxy.io), fallback to secondary
-  try {
-      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-      const response = await fetch(proxyUrl);
-      if (response.ok) {
-           const data = await response.json();
-           if (data && (data.code === 1 || Array.isArray(data.list))) {
-               return data;
-           }
-      }
-  } catch (e) {
-      console.warn('Primary proxy failed, trying backup...', e);
-  }
+  // Strategy: Try primary proxy (corsproxy.io), fallback to others
+  const proxies = [
+      (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+      (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+      (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+  ];
 
-  try {
-      // Backup proxy
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}&t=${Date.now()}`;
-      const response = await fetch(proxyUrl);
-      if (response.ok) {
-           const data = await response.json();
-           return data;
+  for (const proxyGen of proxies) {
+      try {
+          const proxyUrl = proxyGen(targetUrl);
+          const response = await fetch(proxyUrl);
+          if (response.ok) {
+              const data = await response.json();
+              if (data && (data.code === 1 || Array.isArray(data.list))) {
+                  return data;
+              }
+          }
+      } catch (e) {
+          console.warn(`Proxy failed for CMS: ${proxyGen(targetUrl)}`, e);
       }
-  } catch (e) {
-      console.warn('Secondary proxy failed', e);
   }
 
   throw new Error('Network Error: Unable to fetch data from any proxy.');
@@ -75,30 +73,104 @@ const fetchHtmlWithProxy = async (url: string): Promise<string | null> => {
   };
 
 /**
- * Fetch Douban JSON API via Proxy
+ * Fetch Douban JSON API via Proxy with Failover
+ * sort options: 'recommend' (hot), 'time' (new), 'rank' (score)
  */
-const fetchDoubanJson = async (type: string, tag: string, limit = 12): Promise<VodItem[]> => {
-    const doubanUrl = `https://movie.douban.com/j/search_subjects?type=${type}&tag=${encodeURIComponent(tag)}&sort=recommend&page_limit=${limit}&page_start=0`;
-    try {
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(doubanUrl)}`;
-        const res = await fetch(proxyUrl);
-        if (res.ok) {
-            const data = await res.json();
-            if (data.subjects && Array.isArray(data.subjects)) {
-                return data.subjects.map((item: any) => ({
-                    vod_id: item.id, // Douban ID
-                    vod_name: item.title,
-                    vod_pic: item.cover,
-                    vod_score: item.rate,
-                    type_name: tag, // Use the tag as category
-                    source: 'douban'
-                }));
+const fetchDoubanJson = async (type: string, tag: string, limit = 12, sort = 'recommend'): Promise<VodItem[]> => {
+    // Randomize start slightly to vary content on refresh if not sorting by time/rank
+    const start = sort === 'recommend' ? Math.floor(Math.random() * 5) : 0; 
+    const doubanUrl = `https://movie.douban.com/j/search_subjects?type=${type}&tag=${encodeURIComponent(tag)}&sort=${sort}&page_limit=${limit}&page_start=${start}`;
+    
+    // Failover proxies for Douban API
+    const proxies = [
+        `https://corsproxy.io/?${encodeURIComponent(doubanUrl)}`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(doubanUrl)}`,
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(doubanUrl)}`
+    ];
+
+    for (const url of proxies) {
+        try {
+            const res = await fetch(url);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.subjects && Array.isArray(data.subjects)) {
+                    return data.subjects.map((item: any) => ({
+                        vod_id: item.id, // Douban ID
+                        vod_name: item.title,
+                        // Use original cover for list view for speed. Hero banner upgrades it later via details fetch.
+                        vod_pic: item.cover || '', 
+                        vod_score: item.rate,
+                        type_name: tag, // Use the tag as category
+                        source: 'douban',
+                        vod_year: '2024' // Placeholder
+                    }));
+                }
             }
+        } catch (e) {
+            console.warn(`Douban fetch proxy failed: ${url}`, e);
         }
-    } catch (e) {
-        console.warn(`Douban fetch failed for ${tag}`, e);
     }
+    
+    console.warn(`All proxies failed for Douban tag: ${tag}`);
     return [];
+};
+
+/**
+ * Helper to get items based on category tab with filters
+ */
+export const fetchCategoryItems = async (
+    category: string, 
+    options: { filter1?: string, filter2?: string } = {}
+): Promise<VodItem[]> => {
+    
+    const { filter1 = '全部', filter2 = '全部' } = options;
+    let type = 'movie';
+    let tag = '热门';
+    let sort = 'recommend';
+
+    switch (category) {
+        case 'movies':
+            type = 'movie';
+            // Logic for Filter 1 (Sort/Type)
+            if (filter1 === '最新电影') sort = 'time';
+            else if (filter1 === '豆瓣高分') sort = 'rank';
+            else if (filter1 === '冷门佳片') tag = '冷门佳片';
+            else tag = '热门';
+
+            // Logic for Filter 2 (Region)
+            if (filter2 !== '全部') tag = filter2; // Douban usually takes one main tag. Region is a good tag.
+            break;
+
+        case 'series':
+            type = 'tv';
+            tag = '热门';
+            if (filter1 === '最近热门') sort = 'recommend'; // default
+            
+            if (filter2 !== '全部') tag = filter2;
+            break;
+
+        case 'anime':
+            type = 'tv';
+            tag = '日本动画';
+            if (filter1 === '剧场版') tag = '剧场版';
+            // "每日放送" logic is hard to map exactly without backend, defaulting to 'time' sort for '日本动画'
+            if (filter1 === '每日放送') { tag = '日本动画'; sort = 'time'; }
+            
+            break;
+
+        case 'variety':
+            type = 'tv';
+            tag = '综艺';
+            if (filter2 === '国内') tag = '大陆综艺';
+            if (filter2 === '国外') tag = '国外综艺'; 
+            break;
+            
+        default:
+            return [];
+    }
+
+    // Set limit to 60 to display approximately 10 rows
+    return await fetchDoubanJson(type, tag, 60, sort);
 };
 
 /**
@@ -110,20 +182,17 @@ const fetchImdbBackdrop = async (imdbId: string): Promise<string | null> => {
         const html = await fetchHtmlWithProxy(url);
         if (!html) return null;
 
-        // Extract JSON-LD to find trailer thumbnail which is usually a high-res backdrop
+        // Extract JSON-LD
         const jsonMatch = html.match(/<script type="application\/ld\+json">(.*?)<\/script>/);
         if (jsonMatch) {
             const data = JSON.parse(jsonMatch[1]);
             if (data.trailer && data.trailer.thumbnailUrl) {
-                 // Try to get max res by removing resizing parameters (e.g., _V1_QL75_UX380_CR0,0,380,562_.jpg -> _V1_.jpg)
                  return data.trailer.thumbnailUrl.replace(/_V1_.*(\.\w+)$/, '_V1_$1');
             }
         }
         
-        // Fallback: Try to find og:image, though it's often vertical
         const ogImage = html.match(/property="og:image" content="(.*?)"/);
         if (ogImage) {
-            // Check if it's the default imdb logo
             if (!ogImage[1].includes('imdb_logo')) {
                  return ogImage[1].replace(/_V1_.*(\.\w+)$/, '_V1_$1');
             }
@@ -181,8 +250,6 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
     if (!html) return null;
     
     const result: DoubanData = {};
-    
-    // Core Regex Parsing
     
     const scoreMatch = html.match(/property="v:average">([\d\.]+)<\/strong>/);
     if (scoreMatch) result.score = scoreMatch[1];
@@ -258,17 +325,14 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
         result.imdb = imdbMatch[1].replace(/<[^>]+>/g, '').trim();
     }
     
-    // --- Fetch IMDb Wallpaper if available ---
     if (result.imdb) {
         const imdbWallpaper = await fetchImdbBackdrop(result.imdb);
         if (imdbWallpaper) {
-            result.wallpaper = imdbWallpaper; // Override Douban wallpaper with IMDb quality
+            result.wallpaper = imdbWallpaper;
         }
     }
 
-    // --- Actors Extended (Relaxed Regex) ---
     const actorsExtended: ActorItem[] = [];
-    // Try to find the block first
     const celebrityBlockMatch = html.match(/<ul class="celebrities-list[^>]*>([\s\S]*?)<\/ul>/) || html.match(/id="celebrities"[\s\S]*?<ul[^>]*>([\s\S]*?)<\/ul>/);
     
     if (celebrityBlockMatch) {
@@ -277,13 +341,11 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
         items.forEach(item => {
             const nameMatch = item.match(/title="([^"]+)" class="name"/) || item.match(/class="name"[^>]*>([^<]+)</);
             const roleMatch = item.match(/class="role"[^>]*>([^<]+)</);
-            
-            // Try style background-image (Desktop) OR img src (Mobile/Old)
             const picMatch = item.match(/background-image:\s*url\(([^)]+)\)/) || item.match(/<img[^>]+src="([^"]+)"/);
             
             if (nameMatch && picMatch) {
                 let picUrl = picMatch[1].replace(/['"]/g, '');
-                if (picUrl.includes('default')) return; // Skip default avatars
+                if (picUrl.includes('default')) return; 
                 
                 actorsExtended.push({
                     name: nameMatch[1].trim(),
@@ -295,16 +357,12 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
     }
     if (actorsExtended.length > 0) result.actorsExtended = actorsExtended;
 
-    // --- Recommendations (Relaxed Regex) ---
     const recommendations: RecommendationItem[] = [];
-    // Try desktop block
     let recBlockMatch = html.match(/<div class="recommendations-bd"[\s\S]*?>([\s\S]*?)<\/div>/);
-    // Or try generic recommendation block if different layout
     if (!recBlockMatch) recBlockMatch = html.match(/id="recommendations"[\s\S]*?<div class="bd">([\s\S]*?)<\/div>/);
     
     if (recBlockMatch) {
         const block = recBlockMatch[1];
-        // Match both DL/DD structure (Desktop) and loose structure
         const dlRegex = /<dl>([\s\S]*?)<\/dl>/g;
         let dlMatch;
         while ((dlMatch = dlRegex.exec(block)) !== null) {
@@ -338,24 +396,10 @@ export const getDoubanPoster = async (keyword: string): Promise<string | null> =
         if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data) && data.length > 0 && data[0].img) {
-                // Ensure we get a high-quality image
                 return data[0].img.replace(/s_ratio_poster|m(?=\/public)/, 'l');
             }
         }
     } catch (e) { /* ignore */ }
-    
-    try {
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(searchUrl)}`;
-        const res = await fetch(proxyUrl);
-        if (res.ok) {
-            const wrapper = await res.json();
-            const data = JSON.parse(wrapper.contents);
-            if (Array.isArray(data) && data.length > 0 && data[0].img) {
-                return data[0].img.replace(/s_ratio_poster|m(?=\/public)/, 'l');
-            }
-        }
-    } catch (e) { /* ignore */ }
-
     return null;
 };
 
@@ -449,11 +493,11 @@ export const enrichVodDetail = async (detail: VodDetail): Promise<Partial<VodDet
 
 export const getHomeSections = async () => {
     const [movies, series, shortDrama, anime, variety] = await Promise.all([
-        fetchDoubanJson('movie', '热门', 16),
-        fetchDoubanJson('tv', '热门', 16),
-        fetchDoubanJson('tv', '短剧', 16),
-        fetchDoubanJson('tv', '日本动画', 16),
-        fetchDoubanJson('tv', '综艺', 16)
+        fetchDoubanJson('movie', '热门', 18),
+        fetchDoubanJson('tv', '热门', 18),
+        fetchDoubanJson('tv', '短剧', 18),
+        fetchDoubanJson('tv', '日本动画', 18),
+        fetchDoubanJson('tv', '综艺', 18)
     ]);
     return { movies, series, shortDrama, anime, variety };
 };

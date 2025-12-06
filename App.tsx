@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { getHomeSections, searchMovies, getMovieDetail, parseEpisodes, enrichVodDetail, fetchDoubanData } from './services/vodService';
+import { getHomeSections, searchMovies, getMovieDetail, parseEpisodes, enrichVodDetail, fetchDoubanData, fetchCategoryItems } from './services/vodService';
 import VideoPlayer from './components/VideoPlayer';
 import MovieInfoCard from './components/MovieInfoCard';
 import GeminiChat from './components/GeminiChat';
@@ -16,6 +17,9 @@ const NavIcons = {
     Variety: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>,
 };
 
+// React Declaration at top level to avoid TDZ issues in some bundlers/environments
+const ReactRef = React;
+
 const NavBar = ({ activeTab, onTabChange }: { activeTab: string, onTabChange: (tab: string) => void }) => {
     const navItems = [
         { id: 'home', label: '首页', icon: NavIcons.Home },
@@ -30,14 +34,12 @@ const NavBar = ({ activeTab, onTabChange }: { activeTab: string, onTabChange: (t
         <nav className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-xl border-b border-white/5 transition-all duration-300">
             <div className="container mx-auto px-4 max-w-[1400px]">
                 <div className="flex items-center justify-between h-16">
-                    {/* Logo */}
                     <div className="flex items-center gap-2 cursor-pointer" onClick={() => onTabChange('home')}>
                         <span className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-brand to-cyan-400">
                             CineStream
                         </span>
                     </div>
 
-                    {/* Desktop Nav */}
                     <div className="hidden lg:flex items-center gap-1">
                         {navItems.map(item => (
                             <button
@@ -55,7 +57,6 @@ const NavBar = ({ activeTab, onTabChange }: { activeTab: string, onTabChange: (t
                         ))}
                     </div>
 
-                    {/* Mobile Nav (Scrollable) */}
                     <div className="lg:hidden flex items-center gap-4 overflow-x-auto no-scrollbar w-full ml-4 mask-linear-fade">
                          {navItems.map(item => (
                             <button
@@ -85,7 +86,6 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
 
     const currentItem = items[currentIndex];
 
-    // Auto rotate
     useEffect(() => {
         if (items.length === 0) return;
         const timer = setInterval(() => {
@@ -93,19 +93,14 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
             setTimeout(() => {
                 setCurrentIndex((prev) => (prev + 1) % items.length);
                 setIsFading(false);
-            }, 600); // Wait for fade out
+            }, 600);
         }, 8000);
         return () => clearInterval(timer);
     }, [items.length]);
 
-    // Data Fetching
     useEffect(() => {
         if (!currentItem) return;
-        
         let cancelled = false;
-        
-        // STRICT RESET: Clear detail immediately when item changes. 
-        // This ensures stale data (wallpaper/synopsis from previous movie) is never shown with the new title.
         setDetail(null);
 
         const loadDetail = async () => {
@@ -114,25 +109,19 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
                 if (!cancelled) {
                     setDetail(data);
                 }
-            } catch (e) {
-                // ignore
-            }
+            } catch (e) {}
         };
-
         loadDetail();
-
         return () => { cancelled = true; };
     }, [currentItem]); 
 
     if (!currentItem) return null;
 
-    // Use wallpaper (horizontal/stage photo) if available, then pic (high res poster), then item.vod_pic
     const displayPoster = detail?.wallpaper || detail?.pic || currentItem.vod_pic;
     const posterUrl = detail?.pic || currentItem.vod_pic;
 
     return (
-        <div className="relative w-full h-[40vh] md:h-[50vh] lg:h-[55vh] rounded-3xl overflow-hidden mb-12 shadow-2xl border border-white/5 group mt-8">
-            {/* Background */}
+        <div className="relative w-full h-[40vh] md:h-[50vh] lg:h-[55vh] rounded-3xl overflow-hidden mb-12 shadow-2xl border border-white/5 group mt-8 flex justify-center items-center">
             <div className={`absolute inset-0 transition-opacity duration-700 ${isFading ? 'opacity-0' : 'opacity-100'}`}>
                 <ImageWithFallback 
                     src={displayPoster}
@@ -143,11 +132,9 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
                 <div className="absolute inset-0 bg-gradient-to-r from-[#020617] via-[#020617]/70 to-transparent"></div>
             </div>
 
-            {/* Content */}
             <div className={`absolute inset-0 z-10 flex items-end md:items-center justify-center p-6 md:p-12 lg:p-16 transition-opacity duration-700 ${isFading ? 'opacity-0' : 'opacity-100'}`}>
-                <div className="flex items-center gap-8 lg:gap-12 w-full max-w-6xl mx-auto">
+                <div className="flex items-center gap-8 lg:gap-12 w-full max-w-6xl mx-auto justify-center">
                     
-                    {/* Small Poster (Hidden on mobile) */}
                     <div className="hidden md:block w-48 lg:w-60 flex-shrink-0 aspect-[2/3] rounded-xl overflow-hidden shadow-2xl border-2 border-white/10 transform -rotate-2 hover:rotate-0 transition-all duration-500 z-20 bg-gray-900">
                          <ImageWithFallback 
                             src={posterUrl}
@@ -156,7 +143,6 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
                         />
                     </div>
 
-                    {/* Text Content */}
                     <div className="flex-1 flex flex-col gap-4 md:gap-6 pb-8 md:pb-0 items-start">
                         <div className="flex items-center gap-3">
                             <span className="bg-brand text-black text-xs font-bold px-2 py-0.5 rounded shadow-lg shadow-brand/20">Featured</span>
@@ -188,7 +174,6 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
                 </div>
             </div>
 
-            {/* Indicators */}
             <div className="absolute bottom-6 right-6 flex gap-2 z-20">
                 {items.map((_, idx) => (
                     <button
@@ -208,12 +193,11 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
     );
 };
 
-const HorizontalSection = ({ title, items, id, onItemClick, setRef }: { 
+const HorizontalSection = ({ title, items, id, onItemClick }: { 
     title: string, 
     items: VodItem[], 
     id: string, 
-    onItemClick: (item: VodItem) => void,
-    setRef: (el: HTMLDivElement | null) => void 
+    onItemClick: (item: VodItem) => void
 }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -228,42 +212,25 @@ const HorizontalSection = ({ title, items, id, onItemClick, setRef }: {
     if (!items || items.length === 0) return null;
     
     return (
-      <div className="mb-10 scroll-mt-24 relative group" id={id} ref={setRef}>
+      <div className="mb-10 relative group">
           <h3 className="text-xl font-bold text-white mb-4 pl-2 border-l-4 border-brand flex items-center gap-2">
               {title} <span className="text-xs text-gray-500 font-normal ml-2">HOT</span>
           </h3>
           
-          <button 
-              onClick={() => scroll('left')}
-              className="absolute left-0 top-1/2 z-20 bg-black/60 hover:bg-brand text-white w-10 h-10 rounded-full backdrop-blur-md border border-white/10 opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-xl hidden md:flex items-center justify-center -ml-5 hover:scale-110 translate-y-2"
-          >
+          <button onClick={() => scroll('left')} className="absolute left-0 top-1/2 z-20 bg-black/60 hover:bg-brand text-white w-10 h-10 rounded-full backdrop-blur-md border border-white/10 opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-xl hidden md:flex items-center justify-center -ml-5 hover:scale-110 translate-y-2">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
           </button>
-          <button 
-              onClick={() => scroll('right')}
-              className="absolute right-0 top-1/2 z-20 bg-black/60 hover:bg-brand text-white w-10 h-10 rounded-full backdrop-blur-md border border-white/10 opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-xl hidden md:flex items-center justify-center -mr-5 hover:scale-110 translate-y-2"
-          >
+          <button onClick={() => scroll('right')} className="absolute right-0 top-1/2 z-20 bg-black/60 hover:bg-brand text-white w-10 h-10 rounded-full backdrop-blur-md border border-white/10 opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-xl hidden md:flex items-center justify-center -mr-5 hover:scale-110 translate-y-2">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
           </button>
 
           <div ref={scrollRef} className="flex gap-4 overflow-x-auto pb-4 no-scrollbar scroll-smooth px-1">
               {items.map((item) => (
-                  <div 
-                      key={item.vod_id}
-                      onClick={() => onItemClick(item)}
-                      className="flex-shrink-0 w-36 md:w-44 cursor-pointer group relative"
-                  >
+                  <div key={item.vod_id} onClick={() => onItemClick(item)} className="flex-shrink-0 w-36 md:w-44 cursor-pointer group relative">
                       <div className="aspect-[2/3] rounded-xl overflow-hidden bg-gray-900 border border-white/10 relative shadow-lg group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1">
-                           <ImageWithFallback 
-                              src={item.vod_pic || ''}
-                              alt={item.vod_name || 'Poster'}
-                              searchKeyword={item.vod_name}
-                              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                          />
+                           <ImageWithFallback src={item.vod_pic || ''} alt={item.vod_name || 'Poster'} searchKeyword={item.vod_name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                           {item.vod_score && (
-                              <div className="absolute top-1.5 right-1.5 bg-black/70 backdrop-blur text-yellow-400 text-xs font-bold px-1.5 py-0.5 rounded border border-white/10">
-                                  {item.vod_score}
-                              </div>
+                              <div className="absolute top-1.5 right-1.5 bg-black/70 backdrop-blur text-yellow-400 text-xs font-bold px-1.5 py-0.5 rounded border border-white/10">{item.vod_score}</div>
                           )}
                           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/60 to-transparent p-3 pt-10">
                               <h4 className="text-sm font-bold text-white truncate group-hover:text-brand transition-colors">{item.vod_name}</h4>
@@ -273,6 +240,165 @@ const HorizontalSection = ({ title, items, id, onItemClick, setRef }: {
               ))}
           </div>
       </div>
+    );
+};
+
+// Filter Configuration
+const FILTER_CONFIG: any = {
+    movies: {
+        title: '电影',
+        row1: { label: '分类', options: ['全部', '热门电影', '最新电影', '豆瓣高分', '冷门佳片'] },
+        row2: { label: '地区', options: ['全部', '华语', '欧美', '韩国', '日本'] }
+    },
+    series: {
+        title: '电视剧',
+        desc: '来自豆瓣的精选内容',
+        row1: { label: '分类', options: ['全部', '最近热门'] },
+        row2: { label: '类型', options: ['全部', '国产', '欧美', '日本', '韩国', '动漫', '纪录片'] }
+    },
+    anime: {
+        title: '动漫',
+        desc: '来自 Bangumi 番组计划的精选内容',
+        row1: { label: '分类', options: ['每日放送', '番剧', '剧场版'] },
+        row2: { label: '星期', options: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'] }
+    },
+    variety: {
+        title: '综艺',
+        desc: '来自豆瓣的精选内容',
+        row1: { label: '分类', options: ['全部', '最近热门'] },
+        row2: { label: '类型', options: ['全部', '国内', '国外'] }
+    }
+};
+
+const FilterSection = ({ 
+    config, 
+    filter1, 
+    filter2, 
+    onFilter1Change, 
+    onFilter2Change 
+}: { 
+    config: any, 
+    filter1: string, 
+    filter2: string, 
+    onFilter1Change: (val: string) => void, 
+    onFilter2Change: (val: string) => void 
+}) => {
+    if (!config) return null;
+
+    return (
+        <div className="mb-8">
+            <h2 className="text-3xl font-bold text-white mb-2">{config.title}</h2>
+            {config.desc && <p className="text-gray-400 text-sm mb-6">{config.desc}</p>}
+            
+            <div className="bg-[#121620] border border-white/5 rounded-2xl p-4 md:p-6 shadow-xl backdrop-blur-sm">
+                {/* Row 1 */}
+                <div className="flex items-center gap-4 mb-4 overflow-x-auto no-scrollbar pb-1">
+                    <span className="text-gray-400 text-sm font-medium whitespace-nowrap min-w-[3rem]">{config.row1.label}</span>
+                    <div className="flex gap-2">
+                        {config.row1.options.map((opt: string) => (
+                            <button
+                                key={opt}
+                                onClick={() => onFilter1Change(opt)}
+                                className={`px-4 py-1.5 rounded-full text-xs md:text-sm font-medium transition-all whitespace-nowrap ${
+                                    filter1 === opt 
+                                    ? 'bg-gray-600/80 text-white shadow-lg' 
+                                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+                                }`}
+                            >
+                                {opt}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Row 2 */}
+                <div className="flex items-center gap-4 overflow-x-auto no-scrollbar pb-1">
+                    <span className="text-gray-400 text-sm font-medium whitespace-nowrap min-w-[3rem]">{config.row2.label}</span>
+                    <div className="flex gap-2">
+                        {config.row2.options.map((opt: string) => (
+                            <button
+                                key={opt}
+                                onClick={() => onFilter2Change(opt)}
+                                className={`px-4 py-1.5 rounded-full text-xs md:text-sm font-medium transition-all whitespace-nowrap ${
+                                    filter2 === opt 
+                                    ? 'bg-gray-600/80 text-white shadow-lg' 
+                                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+                                }`}
+                            >
+                                {opt}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// New Component for Category Pages
+const CategoryGrid = ({ category, onItemClick }: { category: string, onItemClick: (item: VodItem) => void }) => {
+    const [items, setItems] = useState<VodItem[]>([]);
+    const [loading, setLoading] = useState(true);
+    
+    // Filter States
+    const config = FILTER_CONFIG[category];
+    const [filter1, setFilter1] = useState(config?.row1.options[0] || '全部');
+    const [filter2, setFilter2] = useState(config?.row2.options[0] || '全部');
+
+    // Reset filters when category changes
+    useEffect(() => {
+        if (config) {
+            setFilter1(config.row1.options[0]);
+            setFilter2(config.row2.options[0]);
+        }
+    }, [category]);
+
+    useEffect(() => {
+        const fetchItems = async () => {
+            setLoading(true);
+            const data = await fetchCategoryItems(category, { filter1, filter2 });
+            setItems(data);
+            setLoading(false);
+        };
+        fetchItems();
+    }, [category, filter1, filter2]);
+
+    if (!config) return null;
+
+    return (
+        <div className="animate-fade-in mt-4">
+            <FilterSection 
+                config={config} 
+                filter1={filter1} 
+                filter2={filter2} 
+                onFilter1Change={setFilter1} 
+                onFilter2Change={setFilter2}
+            />
+
+            {loading ? (
+                <div className="flex justify-center py-20 min-h-[50vh]">
+                    <div className="animate-spin h-10 w-10 border-4 border-brand border-t-transparent rounded-full"></div>
+                </div>
+            ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
+                    {items.map((item) => (
+                        <div key={item.vod_id} onClick={() => onItemClick(item)} className="group cursor-pointer relative bg-gray-900 rounded-lg overflow-hidden aspect-[2/3] ring-1 ring-white/5 hover:ring-brand hover:shadow-[0_0_20px_rgba(34,197,94,0.15)] transition-all duration-300 hover:-translate-y-1">
+                            <ImageWithFallback src={item.vod_pic || ''} alt={item.vod_name || 'Poster'} searchKeyword={item.vod_name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                            <div className="absolute top-0 right-0 p-1.5 z-10">
+                                {item.vod_score && <span className="bg-black/60 backdrop-blur-md text-[10px] text-yellow-400 px-1.5 py-0.5 rounded border border-white/10 shadow-lg font-bold">★ {item.vod_score}</span>}
+                            </div>
+                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/80 to-transparent p-3 pt-12">
+                                <h4 className="text-sm font-bold text-white truncate group-hover:text-brand transition-colors">{item.vod_name}</h4>
+                                <div className="flex justify-between items-center mt-1.5 text-[10px] text-gray-400 font-medium">
+                                    <span className="bg-white/10 px-1.5 py-0.5 rounded">{item.type_name || '影视'}</span>
+                                    <span>{item.vod_year}</span>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
     );
 };
 
@@ -287,8 +413,7 @@ const App: React.FC = () => {
   const [showSidePanel, setShowSidePanel] = useState(true);
   const [activeTab, setActiveTab] = useState('home');
   const resultsRef = useRef<HTMLDivElement>(null);
-  const sectionRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
-
+  
   // Home Page Sections State
   const [homeSections, setHomeSections] = useState<{
       movies: VodItem[];
@@ -307,33 +432,17 @@ const App: React.FC = () => {
            try {
                const sections = await getHomeSections();
                setHomeSections(sections);
-               
-               // Aggregate items from all sections for Hero Carousel
-               const allItems = [
-                   ...sections.movies,
-                   ...sections.series,
-                   ...sections.anime,
-                   ...sections.variety
-               ];
-               
-               // Randomly shuffle and pick 10 unique items
+               const allItems = [ ...sections.movies, ...sections.series, ...sections.anime, ...sections.variety ];
                const shuffled = allItems.sort(() => 0.5 - Math.random());
-               const selectedHeroes = shuffled.slice(0, 10);
-               
-               setHeroItems(selectedHeroes);
-
-           } catch(e) {
-               console.error(e);
-           } finally {
-               setLoading(false);
-           }
+               setHeroItems(shuffled.slice(0, 10));
+           } catch(e) { console.error(e); } 
+           finally { setLoading(false); }
       };
       fetchInitial();
   }, []);
 
   const triggerSearch = async (query: string) => {
       if(!query.trim()) return;
-      
       setSearchQuery(query);
       setLoading(true);
       setHasSearched(true);
@@ -343,11 +452,6 @@ const App: React.FC = () => {
       try {
           const data = await searchMovies(query);
           setSearchResults((data.list || []) as VodItem[]);
-          setTimeout(() => {
-              if (resultsRef.current) {
-                  resultsRef.current.scrollIntoView({ behavior: 'smooth' });
-              }
-          }, 100);
       } catch (error) {
           console.error("Search error", error);
       } finally {
@@ -360,96 +464,40 @@ const App: React.FC = () => {
       triggerSearch(searchQuery);
   };
 
-  // Optimized click handler with Smart Matching
   const handleItemClick = async (item: VodItem) => {
       if (item.source === 'douban') {
           setLoading(true);
           try {
-              // 1. Fetch Reference Data from Douban (to get Director/Actor/Year)
               const doubanDetail = await fetchDoubanData(item.vod_name, item.vod_id);
-              
-              // 2. Search CMS
               const searchRes = await searchMovies(item.vod_name);
               
               if (searchRes.list && searchRes.list.length > 0) {
                   let list = searchRes.list as VodItem[];
-                  
-                  // Filter candidates that vaguely match the name
-                  let candidates = list.filter(c => 
-                      c.vod_name.includes(item.vod_name) || item.vod_name.includes(c.vod_name)
-                  );
-
+                  let candidates = list.filter(c => c.vod_name.includes(item.vod_name) || item.vod_name.includes(c.vod_name));
                   if (candidates.length === 0) candidates = list;
+                  let bestMatch = candidates[0];
 
-                  let bestMatch = candidates[0]; // Default to first result
-
-                  // 3. Smart Matching: Compare CMS candidates against Douban metadata
                   if (doubanDetail && candidates.length > 1) {
-                      // We need to fetch details for the top candidates to check Director/Actor
-                      // because search results usually lack this info.
-                      // Limit to top 5 to avoid performance hit.
-                      const detailedCandidates = await Promise.all(
-                         candidates.slice(0, 5).map(c => getMovieDetail(c.vod_id as number))
-                      );
-
+                      const detailedCandidates = await Promise.all(candidates.slice(0, 5).map(c => getMovieDetail(c.vod_id as number)));
                       let maxScore = -1;
-
                       for (const cand of detailedCandidates) {
                           if (!cand) continue;
                           let score = 0;
-
-                          // Base Score: Exact name match
                           if (cand.vod_name === item.vod_name) score += 10;
-
-                          // Factor 1: Year Match (+/- 1 year tolerance)
-                          if (doubanDetail.year && cand.vod_year) {
-                              const dYear = parseInt(doubanDetail.year);
-                              const cYear = parseInt(cand.vod_year);
-                              if (!isNaN(dYear) && !isNaN(cYear)) {
-                                  if (Math.abs(dYear - cYear) <= 1) score += 5;
-                              }
-                          }
-
-                          // Factor 2: Director Match
-                          if (doubanDetail.director && cand.vod_director) {
-                              const dDirs = doubanDetail.director.split('/');
-                              // If any director name overlaps
-                              if (dDirs.some(d => cand.vod_director.includes(d.trim()))) score += 10;
-                          }
-
-                          // Factor 3: Actor Match
-                          if (doubanDetail.actor && cand.vod_actor) {
-                              const dActors = doubanDetail.actor.split('/');
-                              const cActors = cand.vod_actor;
-                              // Count overlap
-                              const overlapCount = dActors.filter(a => cActors.includes(a.trim())).length;
-                              score += overlapCount * 3;
-                          }
-
-                          if (score > maxScore) {
-                              maxScore = score;
-                              bestMatch = cand;
-                          }
+                          if (doubanDetail.year && cand.vod_year && Math.abs(parseInt(doubanDetail.year) - parseInt(cand.vod_year)) <= 1) score += 5;
+                          if (score > maxScore) { maxScore = score; bestMatch = cand; }
                       }
-                  } else {
-                      // Fallback: Just try to match exact name if we didn't fetch details
-                      const exactMatch = list.find(v => v.vod_name === item.vod_name);
-                      if (exactMatch) bestMatch = exactMatch;
                   }
                   
-                  // Play the best match
                   await handleSelectMovie(bestMatch.vod_id as number);
                   
-                  // Update UI with better metadata from Douban if available
                   setCurrentMovie(prev => {
                       if (prev) {
-                          // Merge Douban info (high qual poster, score, etc) onto the playing movie
                           return {
                               ...prev,
                               vod_pic: doubanDetail?.pic || item.vod_pic || prev.vod_pic,
                               vod_score: doubanDetail?.score || item.vod_score || prev.vod_score,
                               vod_year: doubanDetail?.year || item.vod_year || prev.vod_year,
-                              // If we fetched rich data, these might be available too:
                               vod_director: doubanDetail?.director || prev.vod_director,
                               vod_actor: doubanDetail?.actor || prev.vod_actor,
                           };
@@ -458,11 +506,9 @@ const App: React.FC = () => {
                   });
 
               } else {
-                  // No results found in CMS
                   triggerSearch(item.vod_name);
               }
           } catch (e) {
-              console.error("Auto-play search failed", e);
               triggerSearch(item.vod_name);
           } finally {
               setLoading(false);
@@ -497,7 +543,6 @@ const App: React.FC = () => {
               }
           }
       } catch (error) {
-          console.error("Detail error", error);
           alert("获取详情失败");
       } finally {
           setLoading(false);
@@ -515,22 +560,9 @@ const App: React.FC = () => {
       setActiveTab(tab);
       setCurrentMovie(null);
       setHasSearched(false);
-      
-      if (tab === 'home') {
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-      } else if (tab === 'search') {
-          // just switch tab, content rendered by condition below
-      } else {
-          // Scroll to section
-          setTimeout(() => {
-            const el = sectionRefs.current[tab];
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            else window.scrollTo({ top: 0, behavior: 'smooth' });
-          }, 100);
-      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Callbacks for Player
   const handleEpisodeEnd = useCallback(() => {
     if(currentEpisodeIndex < episodes.length - 1) setCurrentEpisodeIndex(prev => prev + 1);
   }, [currentEpisodeIndex, episodes.length]);
@@ -543,7 +575,7 @@ const App: React.FC = () => {
       <div className="relative min-h-screen pb-20 overflow-x-hidden font-sans pt-16">
           <NavBar activeTab={activeTab} onTabChange={handleTabChange} />
 
-          {/* Global Loading Overlay for Play Click */}
+          {/* Global Loading Overlay */}
           {loading && currentMovie === null && !hasSearched && (
                <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center animate-fade-in">
                    <div className="animate-spin h-12 w-12 border-4 border-brand border-t-transparent rounded-full mb-4"></div>
@@ -557,7 +589,7 @@ const App: React.FC = () => {
                   <section className="mb-12 animate-fade-in space-y-6 mt-4">
                       <button onClick={() => setCurrentMovie(null)} className="flex items-center gap-2 text-gray-400 hover:text-white mb-4">
                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
-                          返回首页
+                          返回
                       </button>
                       
                       <div className="flex flex-col lg:flex-row gap-6 items-start h-auto relative transition-all duration-300">
@@ -579,11 +611,9 @@ const App: React.FC = () => {
                               <div className="w-full lg:w-[350px] bg-[#121212] border border-white/5 rounded-xl overflow-hidden flex flex-col h-[400px] lg:h-[500px] animate-fade-in flex-shrink-0">
                                   <div className="p-4 border-b border-white/5 bg-gray-800/50 flex justify-between items-center">
                                       <h3 className="font-bold text-white">选集 ({episodes.length})</h3>
-                                      <div className="flex items-center gap-2">
-                                          <button onClick={() => setShowSidePanel(false)} className="text-gray-400 hover:text-white p-1 hover:bg-white/10 rounded transition-colors" title="隐藏选集">
-                                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" /></svg>
-                                          </button>
-                                      </div>
+                                      <button onClick={() => setShowSidePanel(false)} className="text-gray-400 hover:text-white p-1 hover:bg-white/10 rounded transition-colors">
+                                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" /></svg>
+                                      </button>
                                   </div>
                                   <div className="p-3 overflow-y-auto custom-scrollbar flex-1 bg-black/20">
                                       <div className="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-4 gap-2">
@@ -603,24 +633,26 @@ const App: React.FC = () => {
 
               {!currentMovie && (
                   <div ref={resultsRef}>
+                      
                       {(hasSearched || activeTab === 'search') ? (
                         <>
-                            <div className="w-full max-w-3xl mx-auto mb-10 mt-8">
-                                <form onSubmit={handleSearch} className="relative group">
-                                    <div className="absolute -inset-0.5 bg-gradient-to-r from-brand to-cyan-500 rounded-full blur opacity-30 group-hover:opacity-60 transition duration-500"></div>
-                                    <div className="relative flex items-center bg-gray-900 rounded-full p-1 ring-1 ring-white/10 shadow-2xl">
-                                        <input
-                                            type="text"
-                                            value={searchQuery}
-                                            onChange={(e) => setSearchQuery(e.target.value)}
-                                            placeholder="搜索电影、电视剧、动漫..."
-                                            className="flex-1 bg-transparent px-6 py-3 text-sm md:text-base text-gray-100 placeholder-gray-500 focus:outline-none"
-                                        />
-                                        <button type="submit" disabled={loading} className="bg-brand hover:bg-brand-hover text-black font-bold py-2.5 px-6 rounded-full transition-all duration-300 flex items-center gap-2 shadow-lg disabled:opacity-70">
-                                            {loading ? '搜索中...' : '搜索'}
-                                        </button>
-                                    </div>
-                                </form>
+                             {/* Search Bar only visible in Search Tab */}
+                            <div className="w-full max-w-3xl mx-auto mb-8 mt-2">
+                                    <form onSubmit={handleSearch} className="relative group">
+                                        <div className="absolute -inset-0.5 bg-gradient-to-r from-brand to-cyan-500 rounded-full blur opacity-30 group-hover:opacity-60 transition duration-500"></div>
+                                        <div className="relative flex items-center bg-gray-900 rounded-full p-1 ring-1 ring-white/10 shadow-2xl">
+                                            <input
+                                                type="text"
+                                                value={searchQuery}
+                                                onChange={(e) => setSearchQuery(e.target.value)}
+                                                placeholder="搜索电影、电视剧、动漫..."
+                                                className="flex-1 bg-transparent px-6 py-3 text-sm md:text-base text-gray-100 placeholder-gray-500 focus:outline-none"
+                                            />
+                                            <button type="submit" disabled={loading} className="bg-brand hover:bg-brand-hover text-black font-bold py-2.5 px-6 rounded-full transition-all duration-300 flex items-center gap-2 shadow-lg disabled:opacity-70">
+                                                {loading ? '搜索中...' : '搜索'}
+                                            </button>
+                                        </div>
+                                    </form>
                             </div>
 
                             <div className="flex items-center gap-3 mb-6">
@@ -652,9 +684,9 @@ const App: React.FC = () => {
                                 </div>
                             )}
                         </>
-                      ) : (
+                      ) : activeTab === 'home' ? (
                           <div className="space-y-4 animate-fade-in">
-                               {activeTab === 'home' && <HeroBanner items={heroItems} onPlay={handleItemClick} />}
+                               <HeroBanner items={heroItems} onPlay={handleItemClick} />
                               
                               {loading && heroItems.length === 0 && (
                                 <div className="flex justify-center py-20">
@@ -664,14 +696,17 @@ const App: React.FC = () => {
                               
                               {!loading && (
                                 <>
-                                    <HorizontalSection id="movies" title="热门电影" items={homeSections.movies} onItemClick={handleItemClick} setRef={el => { sectionRefs.current['movies'] = el; }} />
-                                    <HorizontalSection id="series" title="热门剧集" items={homeSections.series} onItemClick={handleItemClick} setRef={el => { sectionRefs.current['series'] = el; }} />
-                                    <HorizontalSection id="short" title="爆款短剧" items={homeSections.shortDrama} onItemClick={handleItemClick} setRef={el => { sectionRefs.current['short'] = el; }} />
-                                    <HorizontalSection id="anime" title="新番放送" items={homeSections.anime} onItemClick={handleItemClick} setRef={el => { sectionRefs.current['anime'] = el; }} />
-                                    <HorizontalSection id="variety" title="热门综艺" items={homeSections.variety} onItemClick={handleItemClick} setRef={el => { sectionRefs.current['variety'] = el; }} />
+                                    <HorizontalSection id="movies" title="热门电影" items={homeSections.movies} onItemClick={handleItemClick} />
+                                    <HorizontalSection id="series" title="热门剧集" items={homeSections.series} onItemClick={handleItemClick} />
+                                    <HorizontalSection id="short" title="爆款短剧" items={homeSections.shortDrama} onItemClick={handleItemClick} />
+                                    <HorizontalSection id="anime" title="新番放送" items={homeSections.anime} onItemClick={handleItemClick} />
+                                    <HorizontalSection id="variety" title="热门综艺" items={homeSections.variety} onItemClick={handleItemClick} />
                                 </>
                               )}
                           </div>
+                      ) : (
+                          // Render specific category page
+                          <CategoryGrid category={activeTab} onItemClick={handleItemClick} />
                       )}
                   </div>
               )}
