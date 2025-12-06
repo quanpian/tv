@@ -33,14 +33,14 @@ const NavBar = ({ activeTab, onTabChange }: { activeTab: string, onTabChange: (t
     return (
         <nav className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-xl border-b border-white/5 transition-all duration-300">
             <div className="container mx-auto px-4 max-w-[1400px]">
-                <div className="flex items-center justify-between h-16">
-                    <div className="flex items-center gap-2 cursor-pointer" onClick={() => onTabChange('home')}>
+                <div className="flex items-center justify-between h-16 relative">
+                    <div className="flex items-center gap-2 cursor-pointer z-20" onClick={() => onTabChange('home')}>
                         <span className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-brand to-cyan-400">
                             CineStream
                         </span>
                     </div>
 
-                    <div className="hidden lg:flex items-center gap-1">
+                    <div className="hidden lg:flex items-center gap-1 absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
                         {navItems.map(item => (
                             <button
                                 key={item.id}
