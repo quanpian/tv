@@ -151,87 +151,81 @@ const transformDanmaku = (comments: any[]) => {
 const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: string) => {
     if (!title) return [];
     
-    // 1. Clean Title for Searching
+    // 1. Clean Title
     const cleanTitle = title
-        .replace(/第\s*\d+\s*季|Season\s*\d+|S\d+/gi, '') // Remove Season info
-        .replace(/\(\d{4}\)/g, '') // Remove Year
+        .replace(/第\s*\d+\s*季|Season\s*\d+|S\d+/gi, '')
+        .replace(/\(\d{4}\)/g, '')
         .replace(/电视剧|动漫|综艺|movie|tv/gi, '')
         .trim();
     
     const episodeNum = episodeIndex + 1;
-    // Extract Season Number for matching
-    const seasonMatch = title.match(/第\s*(\d+)\s*季|Season\s*(\d+)|S(\d+)/i);
-    const seasonNum = seasonMatch ? parseInt(seasonMatch[1] || seasonMatch[2] || seasonMatch[3]) : 1;
-
-    console.log(`[Danmaku] Target: "${cleanTitle}" S${seasonNum}E${episodeNum}`);
+    console.log(`[Danmaku] Search: "${cleanTitle}" Ep${episodeNum}`);
 
     let episodeId: number | null = null;
 
     try {
-        // Strategy: Search Episodes API Only (Priority)
-        console.log(`[Danmaku] Searching Episodes: ${cleanTitle}`);
         const searchUrl = `${API_SEARCH_EPISODES}?anime=${encodeURIComponent(cleanTitle)}`;
         const res = await robustFetch(searchUrl);
         const data = await res.json();
         
         if (data.animes && Array.isArray(data.animes)) {
             let bestScore = -1;
-            let bestMatchId = null;
+            let bestAnime: any = null;
 
-            // Iterate ALL animes to find the best match
+            // Step 1: Score Animes to find the best match
             for (const anime of data.animes) {
-                if (!anime.episodes || anime.episodes.length === 0) continue;
-                
-                // Flexible Regex to match episode numbers from titles like "【qiyi】 第1集", "EP01", "01"
-                // Matches: "第1集", "EP1", "E1", "Vol.1", " 1 ", "[01]"
-                const regex = /(?:第|EP|E|Vol\.?|Episode)\s*0*(\d+)/i;
-                const regexSimple = /(?:^|\s|\[)0*(\d+)(?:$|\s|\])/;
+                let score = 0;
+                const animeTitle = (anime.animeTitle || '').toLowerCase();
+                const targetTitle = cleanTitle.toLowerCase();
 
-                const targetEp = anime.episodes.find((ep: any) => {
+                if (animeTitle === targetTitle) score += 100;
+                else if (animeTitle.includes(targetTitle)) score += 50;
+
+                // Check if this anime HAS the episode we are looking for
+                if (anime.episodes && anime.episodes.length > episodeIndex) {
+                    score += 10;
+                }
+                
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestAnime = anime;
+                }
+            }
+
+            if (bestAnime && bestAnime.episodes) {
+                console.log(`[Danmaku] Best Anime: ${bestAnime.animeTitle}`);
+                
+                // Step 2: Try Regex Matching on Episode Title
+                // Patterns: "第1集", "EP01", "01", "[01]", "【qiyi】第1集"
+                const regexes = [
+                    /(?:第|EP|E|Vol\.?|Episode)\s*0*(\d+)/i, // Standard with prefix
+                    /[【\[]\s*0*(\d+)\s*[】\]]/, // Inside brackets
+                    /(?:^|\s)0*(\d+)(?:$|\s)/ // Plain number
+                ];
+
+                const targetEp = bestAnime.episodes.find((ep: any) => {
                     const t = ep.episodeTitle || '';
-                    let match = t.match(regex);
-                    if (!match) match = t.match(regexSimple);
-                    
-                    if (match && parseInt(match[1], 10) === episodeNum) return true;
+                    for (const r of regexes) {
+                        const m = t.match(r);
+                        if (m && parseInt(m[1], 10) === episodeNum) return true;
+                    }
                     return false;
                 });
 
                 if (targetEp) {
-                    let score = 0;
-                    const animeTitle = anime.animeTitle || '';
-                    
-                    if (animeTitle === title || animeTitle === cleanTitle) score += 100;
-                    else if (animeTitle.includes(cleanTitle)) score += 50;
-
-                    const animeSeason = animeTitle.match(/第\s*(\d+)\s*季|Season\s*(\d+)|S(\d+)/i);
-                    const animeSeasonNum = animeSeason ? parseInt(animeSeason[1]||animeSeason[2]||animeSeason[3]) : 1;
-                    if (animeSeasonNum === seasonNum) score += 30;
-
-                    if (anime.type === '电视剧' || anime.type === 'TV') score += 10;
-
-                    if (score > bestScore) {
-                        bestScore = score;
-                        bestMatchId = targetEp.episodeId;
+                    episodeId = targetEp.episodeId;
+                    console.log(`[Danmaku] Regex Match ID: ${episodeId}`);
+                } else if (bestAnime.episodes.length > episodeIndex) {
+                    // Step 3: Fallback to Index
+                    const fallbackEp = bestAnime.episodes[episodeIndex];
+                    if (fallbackEp) {
+                        episodeId = fallbackEp.episodeId;
+                        console.log(`[Danmaku] Index Fallback ID: ${episodeId}`);
                     }
                 }
             }
-
-            if (bestMatchId) {
-                episodeId = bestMatchId;
-                console.log(`[Danmaku] Match Found ID: ${episodeId}`);
-            } else if (data.animes.length > 0) {
-                 // Fallback: If regex fails, try index
-                 const relevantAnimes = data.animes.filter((a: any) => a.animeTitle.includes(cleanTitle));
-                 const fallbackAnime = relevantAnimes.length > 0 ? relevantAnimes[0] : data.animes[0];
-
-                 if (fallbackAnime.episodes && fallbackAnime.episodes.length > episodeIndex) {
-                     episodeId = fallbackAnime.episodes[episodeIndex].episodeId;
-                     console.log(`[Danmaku] Fallback Index ID: ${episodeId}`);
-                 }
-            }
         }
 
-        // Fetch Comments
         if (episodeId) {
             const commentUrl = `${API_COMMENT}/${episodeId}?withRelated=true&chConvert=1&format=json`;
             const res = await robustFetch(commentUrl);
@@ -372,19 +366,17 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
                   onSwitch: function (item: any) {
                       const nextState = !item.switch;
                       item.tooltip = nextState ? '开启' : '关闭';
-                      const plugin = this.plugins.artplayerPluginDanmuku;
-                      if (plugin) {
+                      if (art.plugins.artplayerPluginDanmuku) {
                           if (nextState) {
-                              plugin.show();
-                              this.notice.show = '弹幕已开启';
+                              art.plugins.artplayerPluginDanmuku.show();
+                              art.notice.show = '弹幕已开启';
                           } else {
-                              plugin.hide();
-                              this.notice.show = '弹幕已关闭';
+                              art.plugins.artplayerPluginDanmuku.hide();
+                              art.notice.show = '弹幕已关闭';
                           }
                       }
-                      // Double assurance
-                      if (this.template.$danmuku) {
-                          this.template.$danmuku.style.display = nextState ? 'block' : 'none';
+                      if (art.template.$danmuku) {
+                          art.template.$danmuku.style.display = nextState ? 'block' : 'none';
                       }
                       return nextState;
                   },

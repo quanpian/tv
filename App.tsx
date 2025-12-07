@@ -1,6 +1,8 @@
 
 
 
+
+
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { getHomeSections, searchMovies, getMovieDetail, parseEpisodes, enrichVodDetail, fetchDoubanData, fetchCategoryItems } from './services/vodService';
 import VideoPlayer from './components/VideoPlayer';
@@ -277,19 +279,19 @@ const FILTER_CONFIG: any = {
     movies: {
         title: '电影',
         row1: { label: '分类', options: ['全部', '热门电影', '最新电影', '豆瓣高分', '冷门佳片'] },
-        row2: { label: '地区', options: ['全部', '华语', '欧美', '韩国', '日本'] }
+        row2: { label: '类型', options: ['全部', '动作', '喜剧', '爱情', '科幻', '悬疑', '恐怖', '犯罪', '奇幻', '冒险', '灾难', '武侠', '战争', '华语', '欧美', '韩国', '日本'] }
     },
     series: {
         title: '电视剧',
         desc: '来自豆瓣的精选内容',
         row1: { label: '分类', options: ['全部', '最近热门'] },
-        row2: { label: '类型', options: ['全部', '国产', '欧美', '日本', '韩国', '动漫', '纪录片'] }
+        row2: { label: '类型', options: ['全部', '国产', '欧美', '日本', '韩国', '动漫', '纪录片', '古装', '武侠', '爱情', '剧情', '悬疑', '喜剧', '家庭', '历史'] }
     },
     anime: {
         title: '动漫',
         desc: '来自 Bangumi 番组计划的精选内容',
         row1: { label: '分类', options: ['每日放送', '番剧', '剧场版'] },
-        row2: { label: '星期', options: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'] }
+        row2: { label: '类型', options: ['全部', '热血', '恋爱', '搞笑', '校园', '治愈', '机战', '悬疑', '周一', '周二', '周三', '周四', '周五', '周六', '周日'] }
     },
     variety: {
         title: '综艺',
@@ -381,8 +383,13 @@ const CategoryGrid = ({ category, onItemClick }: { category: string, onItemClick
     
     // Auto-set Weekday for Anime category
     const [filter2, setFilter2] = useState(() => {
-        if (category === 'anime' && config?.row2.label === '星期') {
-            return getCurrentWeekday();
+        if (category === 'anime' && config?.row2.label === '类型') {
+             // For Anime, we mixed weekdays into '类型' in the new config.
+             // But let's check if today is a weekday and if it's in the options.
+             const today = getCurrentWeekday();
+             if (config?.row2.options.includes(today)) {
+                 return today;
+             }
         }
         return config?.row2.options[0] || '全部';
     });
@@ -392,8 +399,13 @@ const CategoryGrid = ({ category, onItemClick }: { category: string, onItemClick
         if (config) {
             setFilter1(config.row1.options[0]);
             
-            if (category === 'anime' && config.row2.label === '星期') {
-                setFilter2(getCurrentWeekday());
+            if (category === 'anime') {
+                const today = getCurrentWeekday();
+                if (config.row2.options.includes(today)) {
+                     setFilter2(today);
+                } else {
+                     setFilter2('全部');
+                }
             } else {
                 setFilter2(config.row2.options[0]);
             }

@@ -1,3 +1,5 @@
+
+
 import { Episode, VodDetail, ApiResponse, ActorItem, RecommendationItem, VodItem } from '../types';
 
 const API_BASE = 'https://caiji.dyttzyapi.com/api.php/provide/vod';
@@ -136,18 +138,18 @@ export const fetchCategoryItems = async (
     switch (category) {
         case 'movies':
             type = 'movie';
-            // Logic for Filter 1 (Sort/Type)
+            // Logic for Filter 1 (Sort)
             if (filter1 === '最新电影') sort = 'time';
             else if (filter1 === '豆瓣高分') sort = 'rank';
             else if (filter1 === '冷门佳片') tag = '冷门佳片';
             else tag = '热门';
 
-            // Logic for Filter 2 (Region)
+            // Logic for Filter 2 (Genre/Region)
             if (filter2 === '华语') tag = '华语';
             else if (filter2 === '欧美') tag = '欧美';
             else if (filter2 === '韩国') tag = '韩国';
             else if (filter2 === '日本') tag = '日本';
-            else if (filter2 !== '全部') tag = filter2;
+            else if (filter2 !== '全部') tag = filter2; // Use the genre name directly (e.g., '动作', '喜剧')
             break;
 
         case 'series':
@@ -155,14 +157,14 @@ export const fetchCategoryItems = async (
             tag = '热门';
             if (filter1 === '最近热门') sort = 'recommend';
             
-            // Map UI regions to correct Douban TV Tags
+            // Map UI regions to correct Douban TV Tags, pass others (Genres) directly
             if (filter2 === '国产') tag = '国产剧';
             else if (filter2 === '欧美') tag = '美剧'; // Douban uses '美剧' primarily
             else if (filter2 === '日本') tag = '日剧';
             else if (filter2 === '韩国') tag = '韩剧';
             else if (filter2 === '动漫') tag = '日本动画';
             else if (filter2 === '纪录片') tag = '纪录片';
-            else if (filter2 !== '全部') tag = filter2;
+            else if (filter2 !== '全部') tag = filter2; // Pass '古装', '武侠', etc. directly
             break;
 
         case 'anime':
@@ -182,6 +184,8 @@ export const fetchCategoryItems = async (
             if (['周一', '周二', '周三', '周四', '周五', '周六', '周日'].includes(filter2)) {
                  tag = '日本动画';
                  sort = 'time'; // Show latest for daily updates
+            } else if (filter2 !== '全部') {
+                tag = filter2; // Use genres like '热血', '恋爱'
             }
             break;
 
