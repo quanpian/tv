@@ -151,7 +151,7 @@ const transformDanmaku = (comments: any[]) => {
 const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: string) => {
     if (!title) return [];
     
-    // 1. Clean Title
+    // 1. Clean Title: remove season, year, keywords to get the core name
     const cleanTitle = title
         .replace(/第\s*\d+\s*季|Season\s*\d+|S\d+/gi, '')
         .replace(/\(\d{4}\)/g, '')
@@ -169,65 +169,80 @@ const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: strin
         const data = await res.json();
         
         if (data.animes && Array.isArray(data.animes)) {
-            let bestScore = -1;
-            let bestAnime: any = null;
-
-            // Step 1: Score Animes to find the best match
-            for (const anime of data.animes) {
+            // Calculate a score for each anime to find likely matches
+            const scoredAnimes = data.animes.map((anime: any) => {
                 let score = 0;
                 const animeTitle = (anime.animeTitle || '').toLowerCase();
                 const targetTitle = cleanTitle.toLowerCase();
 
                 if (animeTitle === targetTitle) score += 100;
                 else if (animeTitle.includes(targetTitle)) score += 50;
-
-                // Check if this anime HAS the episode we are looking for
+                
+                // Prioritize entries with enough episodes
                 if (anime.episodes && anime.episodes.length > episodeIndex) {
-                    score += 10;
+                    score += 20;
                 }
                 
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestAnime = anime;
+                // Reduce score if it looks like a different season but title matched loosely
+                if (animeTitle.match(/第[二三四五]季|Season\s*[2-9]/) && !title.match(/第[二三四五]季|Season\s*[2-9]/)) {
+                    score -= 30;
                 }
-            }
 
-            if (bestAnime && bestAnime.episodes) {
-                console.log(`[Danmaku] Best Anime: ${bestAnime.animeTitle}`);
-                
-                // Step 2: Try Regex Matching on Episode Title
-                // Patterns: "第1集", "EP01", "01", "[01]", "【qiyi】第1集"
+                return { ...anime, score };
+            }).sort((a: any, b: any) => b.score - a.score);
+
+            // Iterate through sorted animes to find the episode
+            for (const anime of scoredAnimes) {
+                if (!anime.episodes || anime.episodes.length === 0) continue;
+
+                // Regex patterns to find episode number in title
+                // Handles: "【qiyi】 第1集", "EP01", "E1", "[01]", " 1 "
                 const regexes = [
-                    /(?:第|EP|E|Vol\.?|Episode)\s*0*(\d+)/i, // Standard with prefix
-                    /[【\[]\s*0*(\d+)\s*[】\]]/, // Inside brackets
-                    /(?:^|\s)0*(\d+)(?:$|\s)/ // Plain number
+                    /(?:第|EP|E|Vol\.?|Episode)\s*0*(\d+)/i, // Matches: 第1集, EP01
+                    /[【\[]\s*0*(\d+)\s*[】\]]/, // Matches: [01], 【01】
+                    /^\s*0*(\d+)\s*$/, // Matches: 1, 01 (Exact match)
+                    /\s+0*(\d+)\s+/, // Matches: " 01 " (Number surrounded by spaces)
                 ];
 
-                const targetEp = bestAnime.episodes.find((ep: any) => {
+                const targetEp = anime.episodes.find((ep: any) => {
                     const t = ep.episodeTitle || '';
+                    // First try to match pure number from regex
                     for (const r of regexes) {
                         const m = t.match(r);
-                        if (m && parseInt(m[1], 10) === episodeNum) return true;
+                        if (m) {
+                            const num = parseInt(m[1], 10);
+                            if (num === episodeNum) return true;
+                        }
                     }
+                    // Special case: "【qiyi】 第1集" might be split awkwardly, try a very permissive match for Chinese format
+                    const chineseMatch = t.match(/第\s*(\d+)\s*集/);
+                    if (chineseMatch && parseInt(chineseMatch[1], 10) === episodeNum) return true;
+
                     return false;
                 });
 
                 if (targetEp) {
                     episodeId = targetEp.episodeId;
-                    console.log(`[Danmaku] Regex Match ID: ${episodeId}`);
-                } else if (bestAnime.episodes.length > episodeIndex) {
-                    // Step 3: Fallback to Index
+                    console.log(`[Danmaku] Found via Regex in "${anime.animeTitle}": Episode ID ${episodeId}`);
+                    break; 
+                }
+            }
+
+            // Fallback: If no episode matched via Regex, try index-based on the BEST anime result
+            if (!episodeId && scoredAnimes.length > 0) {
+                const bestAnime = scoredAnimes[0];
+                if (bestAnime.episodes && bestAnime.episodes.length > episodeIndex) {
                     const fallbackEp = bestAnime.episodes[episodeIndex];
                     if (fallbackEp) {
                         episodeId = fallbackEp.episodeId;
-                        console.log(`[Danmaku] Index Fallback ID: ${episodeId}`);
+                        console.log(`[Danmaku] Index Fallback in "${bestAnime.animeTitle}": Episode ID ${episodeId}`);
                     }
                 }
             }
         }
 
         if (episodeId) {
-            const commentUrl = `${API_COMMENT}/${episodeId}?withRelated=true&chConvert=1&format=json`;
+            const commentUrl = `${API_COMMENT}/${episodeId}?withRelated=true&format=json`;
             const res = await robustFetch(commentUrl);
             const data = await res.json();
             if (data.comments) {
@@ -366,18 +381,20 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
                   onSwitch: function (item: any) {
                       const nextState = !item.switch;
                       item.tooltip = nextState ? '开启' : '关闭';
-                      if (art.plugins.artplayerPluginDanmuku) {
-                          if (nextState) {
-                              art.plugins.artplayerPluginDanmuku.show();
-                              art.notice.show = '弹幕已开启';
-                          } else {
-                              art.plugins.artplayerPluginDanmuku.hide();
-                              art.notice.show = '弹幕已关闭';
-                          }
+                      
+                      const plugin = this.plugins.artplayerPluginDanmuku;
+                      if (plugin) {
+                          if (nextState) plugin.show();
+                          else plugin.hide();
                       }
-                      if (art.template.$danmuku) {
-                          art.template.$danmuku.style.display = nextState ? 'block' : 'none';
+                      
+                      if (this.template.$danmuku) {
+                          this.template.$danmuku.style.display = nextState ? 'block' : 'none';
                       }
+
+                      // Use `this` to refer to the Artplayer instance for notice
+                      this.notice.show = nextState ? '弹幕已开启' : '弹幕已关闭';
+                      
                       return nextState;
                   },
               },
