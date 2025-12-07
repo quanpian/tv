@@ -82,47 +82,61 @@ function filterAdsFromM3U8(m3u8Content: string): string {
 }
 
 // ================= API Configuration =================
-const DANMAKU_API_BASE = 'https://dm1.laidd.de5.net/5573108';
+const DANMAKU_API_BASE = 'https://dm1.laidd.de5.net/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';
 const API_SEARCH_EPISODES = `${DANMAKU_API_BASE}/api/v2/search/episodes`;
+const API_MATCH = `${DANMAKU_API_BASE}/api/v2/match`;
+const API_SEARCH_ANIME = `${DANMAKU_API_BASE}/api/v2/search/anime`;
 const API_COMMENT = `${DANMAKU_API_BASE}/api/v2/comment`;
 
 // Robust Fetch with Multiple Proxies
 const robustFetch = async (url: string, options: RequestInit = {}) => {
     const strategies = [
-        // 1. Direct fetch
+        // 1. Direct fetch (fastest if CORS allowed)
         async () => {
-            const res = await fetch(url, { ...options, cache: 'no-store', referrerPolicy: 'no-referrer' });
+            const res = await fetch(url, { ...options, referrerPolicy: 'no-referrer' });
             if (!res.ok) throw new Error(`Direct fetch failed: ${res.status}`);
             return res;
         },
-        // 2. CorsProxy
+        // 2. CorsProxy.io
         async () => {
             const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
             const res = await fetch(proxyUrl, options);
             if (!res.ok) throw new Error(`CorsProxy failed: ${res.status}`);
             return res;
         },
-        // 3. AllOrigins
+        // 3. AllOrigins (JSON wrapper for text/raw)
         async () => {
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-            const res = await fetch(proxyUrl);
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+            const res = await fetch(proxyUrl, options);
             if (!res.ok) throw new Error(`AllOrigins failed: ${res.status}`);
-            const data = await res.json();
-            return {
-                ok: true,
-                json: async () => JSON.parse(data.contents)
-            };
+            return res;
+        },
+        // 4. ThingProxy
+        async () => {
+            const proxyUrl = `https://thingproxy.freeboard.io/fetch/${url}`;
+            const res = await fetch(proxyUrl, options);
+            if (!res.ok) throw new Error(`ThingProxy failed: ${res.status}`);
+            return res;
+        },
+        // 5. CodeTabs
+        async () => {
+            const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`;
+            const res = await fetch(proxyUrl, options);
+            if (!res.ok) throw new Error(`CodeTabs failed: ${res.status}`);
+            return res;
         }
     ];
 
+    let lastError;
     for (const strategy of strategies) {
         try {
             return await strategy();
         } catch (e) {
-            // Continue to next strategy
+            lastError = e;
+            // console.warn('Fetch strategy failed, trying next...', e);
         }
     }
-    throw new Error('All fetch strategies failed');
+    throw lastError || new Error('All fetch strategies failed');
 };
 
 const transformDanmaku = (comments: any[]) => {
@@ -154,7 +168,7 @@ const transformDanmaku = (comments: any[]) => {
 const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: string) => {
     if (!title) return [];
     
-    // 1. Clean Title: remove season, year, keywords to get the core name
+    // Clean Title: remove season, year, keywords to get the core name
     const cleanTitle = title
         .replace(/第\s*\d+\s*季|Season\s*\d+|S\d+/gi, '')
         .replace(/\(\d{4}\)/g, '')
@@ -162,17 +176,18 @@ const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: strin
         .trim();
     
     const episodeNum = episodeIndex + 1;
-    console.log(`[Danmaku] Search: "${cleanTitle}" Ep${episodeNum}`);
+    console.log(`[Danmaku] Starting Waterfall Search for: "${cleanTitle}" Ep${episodeNum}`);
 
     let episodeId: number | null = null;
 
+    // --- Strategy 1: Search Episodes (Prioritize Precise Matching) ---
     try {
+        console.log('[Danmaku] Strategy 1: Search Episodes');
         const searchUrl = `${API_SEARCH_EPISODES}?anime=${encodeURIComponent(cleanTitle)}`;
         const res = await robustFetch(searchUrl);
         const data = await res.json();
         
         if (data.animes && Array.isArray(data.animes)) {
-            // Calculate a score for each anime to find likely matches
             const scoredAnimes = data.animes.map((anime: any) => {
                 let score = 0;
                 const animeTitle = (anime.animeTitle || '').toLowerCase();
@@ -181,25 +196,18 @@ const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: strin
                 if (animeTitle === targetTitle) score += 100;
                 else if (animeTitle.includes(targetTitle)) score += 50;
                 
-                // Prioritize entries with enough episodes
-                if (anime.episodes && anime.episodes.length > episodeIndex) {
-                    score += 20;
-                }
+                if (anime.episodes && anime.episodes.length > episodeIndex) score += 20;
                 
-                // Reduce score if it looks like a different season but title matched loosely
                 if (animeTitle.match(/第[二三四五]季|Season\s*[2-9]/) && !title.match(/第[二三四五]季|Season\s*[2-9]/)) {
                     score -= 30;
                 }
-
                 return { ...anime, score };
             }).sort((a: any, b: any) => b.score - a.score);
 
-            // Iterate through sorted animes to find the episode
             for (const anime of scoredAnimes) {
                 if (!anime.episodes || anime.episodes.length === 0) continue;
 
-                // Regex patterns to find episode number in title
-                // Handles: "【qiyi】 第1集", "EP01", "E1", "[01]", " 1 "
+                // Regex patterns
                 const regexes = [
                     /(?:第|EP|E|Vol\.?|Episode)\s*0*(\d+)/i, // Matches: 第1集, EP01
                     /[【\[]\s*0*(\d+)\s*[】\]]/, // Matches: [01], 【01】
@@ -209,18 +217,13 @@ const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: strin
 
                 const targetEp = anime.episodes.find((ep: any) => {
                     const t = ep.episodeTitle || '';
-                    // First try to match pure number from regex
                     for (const r of regexes) {
                         const m = t.match(r);
-                        if (m) {
-                            const num = parseInt(m[1], 10);
-                            if (num === episodeNum) return true;
-                        }
+                        if (m && parseInt(m[1], 10) === episodeNum) return true;
                     }
-                    // Special case: "【qiyi】 第1集" might be split awkwardly, try a very permissive match for Chinese format
+                    // Special complex chinese case
                     const chineseMatch = t.match(/第\s*(\d+)\s*集/);
                     if (chineseMatch && parseInt(chineseMatch[1], 10) === episodeNum) return true;
-
                     return false;
                 });
 
@@ -231,30 +234,96 @@ const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: strin
                 }
             }
 
-            // Fallback: If no episode matched via Regex, try index-based on the BEST anime result
+            // Fallback: Index-based match
             if (!episodeId && scoredAnimes.length > 0) {
                 const bestAnime = scoredAnimes[0];
                 if (bestAnime.episodes && bestAnime.episodes.length > episodeIndex) {
-                    const fallbackEp = bestAnime.episodes[episodeIndex];
-                    if (fallbackEp) {
-                        episodeId = fallbackEp.episodeId;
-                        console.log(`[Danmaku] Index Fallback in "${bestAnime.animeTitle}": Episode ID ${episodeId}`);
-                    }
+                    episodeId = bestAnime.episodes[episodeIndex].episodeId;
+                    console.log(`[Danmaku] Found via Index in "${bestAnime.animeTitle}": Episode ID ${episodeId}`);
                 }
             }
         }
+    } catch (e) {
+        console.warn('[Danmaku] Strategy 1 failed', e);
+    }
 
-        if (episodeId) {
+    // --- Strategy 2: Match API (Simulated Filename) ---
+    if (!episodeId) {
+        try {
+            console.log('[Danmaku] Strategy 2: Simulated Filename Match');
+            // Simulate a standard filename: Title.S01E01.mp4
+            const fileName = `${cleanTitle}.S01E${episodeNum.toString().padStart(2, '0')}.mp4`;
+            const matchRes = await robustFetch(API_MATCH, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fileName,
+                    fileHash: '00000000000000000000000000000000',
+                    fileSize: 0,
+                    videoDuration: 0,
+                    matchMode: 'hashAndFileName'
+                })
+            });
+            const matchData = await matchRes.json();
+            if (matchData.isMatched && matchData.matches && matchData.matches.length > 0) {
+                episodeId = matchData.matches[0].episodeId;
+                console.log(`[Danmaku] Found via Match API: Episode ID ${episodeId}`);
+            }
+        } catch(e) {
+             console.warn('[Danmaku] Strategy 2 failed', e);
+        }
+    }
+
+    // --- Strategy 3: Standard Search (Anime -> Episodes) ---
+    if (!episodeId) {
+         try {
+            console.log('[Danmaku] Strategy 3: Standard Anime Search');
+            const searchUrl = `${API_SEARCH_ANIME}?keyword=${encodeURIComponent(cleanTitle)}`;
+            const res = await robustFetch(searchUrl);
+            const data = await res.json();
+             if (data.animes && data.animes.length > 0) {
+                 const animeId = data.animes[0].animeId;
+                 // Need to fetch details for this anime to get episodes? 
+                 // Assuming episodes might be in search result or need another call.
+                 // Usually search/anime returns structure similar to search/episodes but sometimes without episode details.
+                 // If episodes are present:
+                 if (data.animes[0].episodes && data.animes[0].episodes.length > episodeIndex) {
+                      episodeId = data.animes[0].episodes[episodeIndex].episodeId;
+                 }
+             }
+         } catch(e) {
+             console.warn('[Danmaku] Strategy 3 failed', e);
+         }
+    }
+
+    // --- Strategy 4: URL Match ---
+    if (!episodeId && videoUrl) {
+         try {
+             console.log('[Danmaku] Strategy 4: URL Match');
+             const urlMatchRes = await robustFetch(`${API_COMMENT}?url=${encodeURIComponent(videoUrl)}&format=json`);
+             const data = await urlMatchRes.json();
+             if (data.comments) {
+                 console.log(`[Danmaku] Found via URL Match`);
+                 return transformDanmaku(data.comments);
+             }
+         } catch (e) {
+             console.warn('[Danmaku] Strategy 4 failed', e);
+         }
+    }
+
+    // Fetch comments if ID found
+    if (episodeId) {
+        try {
+            console.log(`[Danmaku] Fetching comments for Episode ID: ${episodeId}`);
             const commentUrl = `${API_COMMENT}/${episodeId}?withRelated=true&format=json`;
             const res = await robustFetch(commentUrl);
             const data = await res.json();
             if (data.comments) {
                 return transformDanmaku(data.comments);
             }
+        } catch(e) {
+             console.error('[Danmaku] Failed to fetch comments', e);
         }
-
-    } catch (e) {
-        console.error('[Danmaku] Error:', e);
     }
     
     return [];
