@@ -1,12 +1,13 @@
 import { Episode, VodDetail, ApiResponse, ActorItem, RecommendationItem, VodItem } from '../types';
 
 // Use a more reliable CMS API Base
+// Note: This specific CMS API usually supports CORS and is accessible in CN
 const API_BASE = 'https://caiji.dyttzyapi.com/api.php/provide/vod';
 
 /**
  * Robust Fetch Utility with Timeout and Retries
  */
-const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout = 5000) => {
+const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout = 8000) => {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
     try {
@@ -21,45 +22,53 @@ const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout 
 
 /**
  * Generic fetcher for JSON APIs (CMS)
+ * Optimized for CN Network: Try Direct First
  */
 const fetchWithProxy = async (params: URLSearchParams): Promise<ApiResponse> => {
   const targetUrl = `${API_BASE}?${params.toString()}`;
   
-  // Try Direct First
+  // Strategy: Direct fetch is the most reliable for this CMS in CN.
+  // Proxies are only fallbacks.
   try {
       const response = await fetchWithTimeout(targetUrl, {}, 8000);
       if (response.ok) {
           const data = await response.json();
+          // CMS sometimes returns { code: 1, list: [...] } or just { list: [...] }
           if (data && (data.code === 1 || Array.isArray(data.list))) {
               return data;
           }
       }
   } catch (e) {
-      // console.warn("Direct CMS fetch failed, trying proxy...", e);
+      console.warn("Direct CMS fetch failed, trying proxy...", e);
   }
 
-  // Fallback Proxies
+  // Fallback Proxies (Only if direct fails)
   const proxies = [
       (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
       (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
+      (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
   ];
 
   for (const proxyGen of proxies) {
       try {
           const proxyUrl = proxyGen(targetUrl);
-          const response = await fetchWithTimeout(proxyUrl, {}, 5000);
+          const response = await fetchWithTimeout(proxyUrl, {}, 6000);
           if (response.ok) {
               const text = await response.text();
               const data = JSON.parse(text);
-              return data;
+              if (data && (data.code === 1 || Array.isArray(data.list))) {
+                  return data;
+              }
           }
       } catch (e) { /* ignore */ }
   }
 
-  throw new Error('Network Error: Unable to fetch data.');
+  throw new Error('Network Error: Unable to fetch data from CMS.');
 };
 
-// ... (fetchHtmlWithProxy kept same) ... 
+/**
+ * Helper to fetch HTML content (for Douban scraping)
+ */
 const fetchHtmlWithProxy = async (url: string): Promise<string | null> => {
     const strategies = [
         async () => {
@@ -85,11 +94,11 @@ const fetchHtmlWithProxy = async (url: string): Promise<string | null> => {
 };
 
 /**
- * Fetch List from CMS directly
+ * Fetch List from CMS directly (Stable)
  */
 const fetchCMSList = async (typeId: number, limit = 12, page = 1): Promise<VodItem[]> => {
     const params = new URLSearchParams({
-        ac: 'detail',
+        ac: 'detail', 
         t: typeId.toString(),
         pg: page.toString(),
         pagesize: limit.toString(),
@@ -106,7 +115,7 @@ const fetchCMSList = async (typeId: number, limit = 12, page = 1): Promise<VodIt
                 type_name: item.type_name,
                 vod_year: item.vod_year,
                 vod_remarks: item.vod_remarks,
-                source: 'cms'
+                source: 'cms' 
             }));
         }
     } catch (e) {
@@ -115,13 +124,23 @@ const fetchCMSList = async (typeId: number, limit = 12, page = 1): Promise<VodIt
     return [];
 };
 
+/**
+ * Updated Home Sections: Use CMS Data primarily
+ * Type IDs: 1=Movie, 2=Series, 3=Variety, 4=Anime (Standard CMS mapping)
+ */
 export const getHomeSections = async () => {
+    // Helper to catch errors so one failure doesn't break the whole page
+    const safeFetch = async (tid: number, limit: number) => {
+        try { return await fetchCMSList(tid, limit); } 
+        catch (e) { return []; }
+    };
+
     const [movies, series, shortDrama, anime, variety] = await Promise.all([
-        fetchCMSList(1, 12), 
-        fetchCMSList(2, 12), 
-        fetchCMSList(24, 12), // Short Drama
-        fetchCMSList(4, 12), 
-        fetchCMSList(3, 12) 
+        safeFetch(1, 12), // Movies
+        safeFetch(2, 12), // Series
+        safeFetch(24, 12), // Short Drama
+        safeFetch(4, 12), // Anime
+        safeFetch(3, 12)  // Variety
     ]);
     
     return { 
@@ -133,8 +152,7 @@ export const getHomeSections = async () => {
     };
 };
 
-// Map Sub-Categories to CMS Type IDs (Best Guess mapping for this specific CMS)
-// Common CMS Mapping:
+// Map Sub-Categories to CMS Type IDs
 // 1: Movie (Action:6, Comedy:7, Romance:8, SciFi:9, Horror:10, Drama:11, War:12)
 // 2: Series (Domestic:13, HK/TW:14, Japan/Korea:15, Euro/US:16)
 // 3: Variety
@@ -159,24 +177,31 @@ export const fetchCategoryItems = async (
 
     // Try to find specific type ID from filter2 (Genre/Region)
     if (filter2 !== '全部') {
-        // Special handling for merged categories or specific names
         if (category === 'series') {
              if (filter2 === '国产') typeId = 13;
-             else if (filter2 === '香港' || filter2 === '台湾') typeId = 14;
-             else if (filter2 === '日本' || filter2 === '韩国') typeId = 15;
+             else if (filter2 === '港台' || filter2 === '香港' || filter2 === '台湾') typeId = 14;
+             else if (filter2 === '日本' || filter2 === '韩国' || filter2 === '日韩') typeId = 15;
              else if (filter2 === '欧美') typeId = 16;
         } else if (category === 'movies') {
              if (TYPE_ID_MAP[filter2]) typeId = TYPE_ID_MAP[filter2];
         }
     }
 
-    // If still using generic category ID but user selected a filter not in map,
-    // we just fetch the main category. The CMS might not support granular filtering via API easily without correct IDs.
-    
+    // Always fetch page 1 with larger limit for category view
     return await fetchCMSList(typeId, 24);
 };
 
-// ... [Keep existing fetchDoubanData, getDoubanPoster, parseEpisodes, etc.] ...
+export const searchMovies = async (keyword: string, page = 1): Promise<ApiResponse> => {
+  const params = new URLSearchParams({
+      ac: 'detail', // Use detail for search to get full info including pictures
+      wd: keyword,
+      pg: page.toString(),
+      // pagesize: '20' // Optional, API default is usually 20
+  });
+  return await fetchWithProxy(params);
+};
+
+// ... [Keep existing fetchDoubanData, getDoubanPoster, parseEpisodes logic as is] ...
 
 export interface DoubanData {
     doubanId?: string;
@@ -343,16 +368,6 @@ export const parseEpisodes = (urlStr: string, fromStr: string): Episode[] => {
       }
   });
   return episodes;
-};
-
-export const searchMovies = async (keyword: string, page = 1): Promise<ApiResponse> => {
-  const params = new URLSearchParams({
-      ac: 'list',
-      wd: keyword,
-      pg: page.toString(),
-      out: 'json'
-  });
-  return await fetchWithProxy(params);
 };
 
 export const getMovieDetail = async (id: number): Promise<VodDetail | null> => {
