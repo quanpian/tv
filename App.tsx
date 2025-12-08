@@ -1,9 +1,5 @@
-
-
-
-
-
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom'; // Import Router hooks
 import { getHomeSections, searchMovies, getMovieDetail, parseEpisodes, enrichVodDetail, fetchDoubanData, fetchCategoryItems } from './services/vodService';
 import VideoPlayer from './components/VideoPlayer';
 import MovieInfoCard from './components/MovieInfoCard';
@@ -27,6 +23,25 @@ const ReactRef = React;
 // Helper to remove spaces and punctuation for comparison
 const normalizeTitle = (str: string) => {
     return str.replace(/\s+/g, '').replace(/[：:,.，。!！?？]/g, '').toLowerCase();
+};
+
+// --- URL Mapping Configurations ---
+const URL_TO_TAB: Record<string, string> = {
+    '': 'home',
+    'dianying': 'movies',
+    'dianshiju': 'series',
+    'dongman': 'anime',
+    'zongyi': 'variety',
+    'sousuo': 'search'
+};
+
+const TAB_TO_URL: Record<string, string> = {
+    'home': '/',
+    'movies': '/dianying',
+    'series': '/dianshiju',
+    'anime': '/dongman',
+    'variety': '/zongyi',
+    'search': '/sousuo'
 };
 
 const NavBar = ({ activeTab, onTabChange }: { activeTab: string, onTabChange: (tab: string) => void }) => {
@@ -462,6 +477,9 @@ const CategoryGrid = ({ category, onItemClick }: { category: string, onItemClick
 };
 
 const App: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  
   const [loading, setLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<VodItem[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
@@ -484,7 +502,7 @@ const App: React.FC = () => {
 
   const [heroItems, setHeroItems] = useState<VodItem[]>([]);
 
-  // Initial load
+  // Initialize Home Data
   useEffect(() => {
       const fetchInitial = async () => {
            setLoading(true);
@@ -500,13 +518,43 @@ const App: React.FC = () => {
       fetchInitial();
   }, []);
 
+  // Sync URL to State
+  useEffect(() => {
+      const path = location.pathname.split('/')[1] || ''; // remove leading /
+      
+      // Check if we are in player mode
+      if (path === 'play') {
+          const id = location.pathname.split('/')[2];
+          if (id && (!currentMovie || String(currentMovie.vod_id) !== id)) {
+              handleSelectMovie(Number(id));
+          }
+      } else {
+          // Check URL mapping
+          const tab = URL_TO_TAB[path] || 'home';
+          setActiveTab(tab);
+          
+          if (path !== 'play') {
+              setCurrentMovie(null); // Close player if navigating away
+          }
+          
+          if (tab !== 'search') {
+              setHasSearched(false);
+          } else {
+              setHasSearched(true);
+          }
+      }
+  }, [location.pathname]);
+
   const triggerSearch = async (query: string) => {
       if(!query.trim()) return;
       setSearchQuery(query);
       setLoading(true);
       setHasSearched(true);
-      setCurrentMovie(null);
-      setActiveTab('search');
+      
+      // Update URL to search
+      if (activeTab !== 'search') {
+          navigate(TAB_TO_URL['search']);
+      }
       
       try {
           const data = await searchMovies(query);
@@ -529,15 +577,10 @@ const App: React.FC = () => {
           try {
               const doubanDetail = await fetchDoubanData(item.vod_name, item.vod_id);
               
-              // Smart Search Strategy:
-              // 1. Original Name
-              // 2. Name without spaces (e.g. "绝命毒师 第五季" -> "绝命毒师第五季")
-              // 3. Name stripped of season info to find broad matches (e.g. "绝命毒师")
               const searchQueries = new Set<string>();
               searchQueries.add(item.vod_name);
               searchQueries.add(item.vod_name.replace(/\s+/g, ''));
               
-              // Remove "第N季", "Season N", etc. for broad search fallback
               const cleanName = item.vod_name.split(/第|Season/)[0].trim();
               if (cleanName && cleanName.length > 1 && cleanName !== item.vod_name) {
                   searchQueries.add(cleanName);
@@ -546,7 +589,6 @@ const App: React.FC = () => {
               let bestMatch: VodItem | null = null;
               let list: VodItem[] = [];
 
-              // Execute searches sequentially until we find something
               for (const query of Array.from(searchQueries)) {
                   const searchRes = await searchMovies(query);
                   if (searchRes.list && searchRes.list.length > 0) {
@@ -557,20 +599,15 @@ const App: React.FC = () => {
               
               if (list.length > 0) {
                   const targetNameNorm = normalizeTitle(item.vod_name);
-                  
-                  // Scoring system to find the best match in the list
                   let maxScore = -1;
                   
                   for (const cand of list) {
                       let score = 0;
                       const candNameNorm = normalizeTitle(cand.vod_name);
 
-                      // Exact normalized match (ignoring spaces/punctuation)
                       if (candNameNorm === targetNameNorm) score += 100;
-                      // Substring match
                       else if (candNameNorm.includes(targetNameNorm) || targetNameNorm.includes(candNameNorm)) score += 50;
 
-                      // Year match (Douban year vs CMS year)
                       if (doubanDetail?.year && cand.vod_year) {
                           const y1 = parseInt(doubanDetail.year);
                           const y2 = parseInt(cand.vod_year);
@@ -579,10 +616,7 @@ const App: React.FC = () => {
                           }
                       }
                       
-                      // Prefer items with "Season" info if original had it
                       if (item.vod_name.match(/第.+季|Season/)) {
-                           // If candidate also has number/season info that matches
-                           // Simple heuristic: If original ends in "5", candidate should contain "5"
                            const seasonNum = item.vod_name.match(/(\d+|[一二三四五六七八九十]+)/g)?.pop();
                            if (seasonNum && cand.vod_name.includes(seasonNum)) {
                                score += 10;
@@ -596,30 +630,20 @@ const App: React.FC = () => {
                   }
 
                   if (bestMatch) {
-                      await handleSelectMovie(bestMatch.vod_id as number);
+                      // Navigate to play URL
+                      navigate(`/play/${bestMatch.vod_id}`);
                       
-                      // Merge Douban metadata into the CMS item for display
-                      setCurrentMovie(prev => {
-                          if (prev) {
-                              return {
-                                  ...prev,
-                                  vod_pic: doubanDetail?.pic || item.vod_pic || prev.vod_pic,
-                                  vod_score: doubanDetail?.score || item.vod_score || prev.vod_score,
-                                  vod_year: doubanDetail?.year || item.vod_year || prev.vod_year,
-                                  vod_director: doubanDetail?.director || prev.vod_director,
-                                  vod_actor: doubanDetail?.actor || prev.vod_actor,
-                                  vod_douban_id: doubanDetail?.doubanId // Store Douban ID if available
-                              };
-                          }
-                          return prev;
-                      });
+                      // We need to wait for the movie to load via effect or manually set it if we want instant feedback,
+                      // but since we are navigating, the effect will trigger.
+                      // HOWEVER, to keep the Douban metadata, we might want to store it temporarily or refetch it.
+                      // For now, let's let the effect handle the basic load, and we try to inject metadata if possible.
+                      // A better approach is to rely on handleSelectMovie logic which will run when URL changes.
+                      // NOTE: Douban Metadata enrichment happens inside handleSelectMovie
                   } else {
-                      // Fallback: If we found a list but no good match, just show search results
                       triggerSearch(item.vod_name);
                   }
 
               } else {
-                  // No results found in CMS for any variation
                   triggerSearch(item.vod_name);
               }
           } catch (e) {
@@ -628,7 +652,7 @@ const App: React.FC = () => {
               setLoading(false);
           }
       } else {
-          handleSelectMovie(item.vod_id as number);
+          navigate(`/play/${item.vod_id}`);
       }
   };
 
@@ -657,6 +681,7 @@ const App: React.FC = () => {
               }
           }
       } catch (error) {
+          console.error(error);
           alert("获取详情失败");
       } finally {
           setLoading(false);
@@ -671,10 +696,10 @@ const App: React.FC = () => {
   }, [currentEpisodeIndex, episodes]);
 
   const handleTabChange = (tab: string) => {
-      setActiveTab(tab);
-      setCurrentMovie(null);
-      setHasSearched(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      const path = TAB_TO_URL[tab];
+      if (path) {
+          navigate(path);
+      }
   };
 
   const handleEpisodeEnd = useCallback(() => {
@@ -701,7 +726,7 @@ const App: React.FC = () => {
               
               {currentMovie && (
                   <section className="mb-12 animate-fade-in space-y-6 mt-4">
-                      <button onClick={() => setCurrentMovie(null)} className="flex items-center gap-2 text-gray-400 hover:text-white mb-4">
+                      <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-gray-400 hover:text-white mb-4">
                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
                           返回
                       </button>
