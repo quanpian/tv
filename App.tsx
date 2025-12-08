@@ -27,10 +27,8 @@ const normalizeTitle = (str: string) => {
 
 // Helper function to update SEO metadata
 const updateSEO = (title: string, description: string, keywords: string, image?: string, jsonLd?: object) => {
-    // 1. Update Title
     document.title = title;
     
-    // 2. Helper to set meta tags
     const setMeta = (name: string, content: string) => {
         let element = document.querySelector(`meta[name="${name}"]`);
         if (!element) {
@@ -41,7 +39,6 @@ const updateSEO = (title: string, description: string, keywords: string, image?:
         element.setAttribute('content', content);
     };
 
-    // 3. Helper to set OG tags
     const setOg = (property: string, content: string) => {
         let element = document.querySelector(`meta[property="${property}"]`);
         if (!element) {
@@ -52,11 +49,9 @@ const updateSEO = (title: string, description: string, keywords: string, image?:
         element.setAttribute('content', content);
     };
 
-    // 4. Update Standard Meta Tags
     setMeta('description', description);
     setMeta('keywords', keywords);
     
-    // 5. Update Open Graph Tags
     setOg('og:title', title);
     setOg('og:description', description);
     setOg('og:type', 'website');
@@ -64,7 +59,6 @@ const updateSEO = (title: string, description: string, keywords: string, image?:
     setOg('og:url', window.location.href);
     if (image) setOg('og:image', image);
 
-    // 6. Canonical Link
     let linkCanonical = document.querySelector("link[rel='canonical']");
     if (!linkCanonical) {
         linkCanonical = document.createElement("link");
@@ -73,7 +67,6 @@ const updateSEO = (title: string, description: string, keywords: string, image?:
     }
     linkCanonical.setAttribute("href", window.location.href.split('?')[0]);
 
-    // 7. Inject JSON-LD Structured Data
     if (jsonLd) {
         let script = document.querySelector('#json-ld');
         if (!script) {
@@ -187,6 +180,10 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
     const [currentIndex, setCurrentIndex] = useState(0);
     const [detail, setDetail] = useState<any>(null);
     const [isFading, setIsFading] = useState(false);
+    
+    // Touch state for swipe gestures
+    const [touchStart, setTouchStart] = useState<number | null>(null);
+    const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
     const currentItem = items[currentIndex];
 
@@ -219,13 +216,49 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
         return () => { cancelled = true; };
     }, [currentItem]); 
 
+    // Handle Swipe Gestures
+    const handleTouchStart = (e: React.TouchEvent) => {
+        setTouchEnd(null);
+        setTouchStart(e.targetTouches[0].clientX);
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        setTouchEnd(e.targetTouches[0].clientX);
+    };
+
+    const handleTouchEnd = () => {
+        if (!touchStart || !touchEnd) return;
+        const distance = touchStart - touchEnd;
+        const isLeftSwipe = distance > 50;
+        const isRightSwipe = distance < -50;
+
+        if (isLeftSwipe || isRightSwipe) {
+            setIsFading(true);
+            setTimeout(() => {
+                if (isLeftSwipe) {
+                    // Next slide
+                    setCurrentIndex((prev) => (prev + 1) % items.length);
+                } else {
+                    // Previous slide
+                    setCurrentIndex((prev) => (prev - 1 + items.length) % items.length);
+                }
+                setIsFading(false);
+            }, 300); // Faster transition for manual swipe
+        }
+    };
+
     if (!currentItem) return null;
 
     const displayPoster = detail?.wallpaper || detail?.pic || currentItem.vod_pic;
     const posterUrl = detail?.pic || currentItem.vod_pic;
 
     return (
-        <div className="relative w-full h-[45vh] md:h-[50vh] lg:h-[55vh] rounded-2xl md:rounded-3xl overflow-hidden mb-8 md:mb-12 shadow-2xl border border-white/5 group mt-4 md:mt-8 flex justify-center items-center">
+        <div 
+            className="relative w-full h-[45vh] md:h-[50vh] lg:h-[55vh] rounded-2xl md:rounded-3xl overflow-hidden mb-8 md:mb-12 shadow-2xl border border-white/5 group mt-4 md:mt-8 flex justify-center items-center select-none"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+        >
             <div className={`absolute inset-0 transition-opacity duration-700 ${isFading ? 'opacity-0' : 'opacity-100'}`}>
                 <ImageWithFallback 
                     src={displayPoster}
@@ -282,7 +315,8 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
                 {items.map((_, idx) => (
                     <button
                         key={idx}
-                        onClick={() => {
+                        onClick={(e) => {
+                            e.stopPropagation(); // Prevent touch event bubble if user taps indicator
                             setIsFading(true);
                             setTimeout(() => {
                                 setCurrentIndex(idx);
