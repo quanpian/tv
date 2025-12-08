@@ -176,7 +176,7 @@ const transformDanmaku = (comments: any[]) => {
             time: time,
             mode: mode, 
             color: color,
-            border: true,
+            border: false, // Removed text border
         };
     }).filter((item): item is NonNullable<typeof item> => item !== null);
 };
@@ -369,14 +369,14 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
                       }
                       return data;
                   },
-                  speed: 5,
-                  opacity: 1,
+                  speed: 10, // Slower speed (larger number = slower)
+                  opacity: 0.8, // 80% opacity
                   fontSize: 25,
                   color: '#FFFFFF',
                   mode: 0,
-                  margin: [10, '25%'],
+                  margin: [10, '75%'], // Top 1/4 area
                   antiOverlap: true,
-                  synchronousPlayback: false,
+                  synchronousPlayback: true, // Sync with video playback speed
                   visible: danmakuEnabled, 
                   emitter: false,
               }),
@@ -578,9 +578,9 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
           <style>{`
             .art-danmuku-control, .art-control-danmuku { display: none !important; }
             @media (max-width: 768px) {
-                .art-controls .art-control { padding: 0 2px !important; }
+                .art-controls .art-control { padding: 0 1px !important; }
                 .art-control-volume, .art-control-fullscreenWeb { display: none !important; }
-                .art-time { font-size: 12px !important; padding: 0 5px !important; }
+                .art-time { font-size: 11px !important; padding: 0 4px !important; }
             }
           `}</style>
           <div ref={containerRef} className="w-full h-full" />
