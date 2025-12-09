@@ -33,8 +33,8 @@ export const addVodSource = (name: string, api: string) => {
     const sources = getVodSources();
     const newSource: VodSource = {
         id: Date.now().toString(),
-        name,
-        api,
+        name: name.trim(),
+        api: api.trim(),
         active: true,
         canDelete: true
     };
@@ -273,6 +273,7 @@ export const getMovieDetail = async (id: number | string, apiUrl?: string): Prom
           const data = await fetchWithProxy(targetUrl);
           if (data && data.list && data.list.length > 0) {
               const detail = data.list[0] as VodDetail;
+              // Ensure we carry over the API URL to match the source later
               detail.api_url = source.api; 
               return detail;
           }
@@ -298,10 +299,16 @@ export const parseAllSources = (detail: VodDetail): PlaySource[] => {
     
     // Resolve Source Name from Settings configuration
     let sourceName = '默认源';
+    let isCustomSource = false;
+
     if (detail.api_url) {
         const sources = getVodSources();
         const matched = sources.find(s => s.api === detail.api_url);
-        if (matched) sourceName = matched.name;
+        if (matched) {
+            sourceName = matched.name;
+            // Identify if this is a custom source (not default)
+            isCustomSource = matched.id !== 'default';
+        }
     } else if (detail.source === 'douban') {
         sourceName = '豆瓣推荐';
     }
@@ -312,13 +319,15 @@ export const parseAllSources = (detail: VodDetail): PlaySource[] => {
         const urlStr = urlArray[idx];
         if (!urlStr) return;
 
-        // FILTER: Keep M3U8 sources.
-        // We accept if the code explicitly mentions m3u8 OR if the content URL contains .m3u8
-        // We also check for '.m3u8' inside the urlStr to catch cases where the code is generic like '1080p'
+        // FILTER LOGIC:
+        // 1. If it's a Custom Source (user added), we TRUST it. Show everything (m3u8, mp4, etc).
+        // 2. If it's the Default Source, we enforce strict M3U8 filtering to avoid ads/junk.
         const isM3u8Code = code.toLowerCase().includes('m3u8');
         const isM3u8Content = urlStr.includes('.m3u8');
         
-        if (!isM3u8Code && !isM3u8Content) return;
+        if (!isCustomSource && !isM3u8Code && !isM3u8Content) {
+            return; // Skip non-m3u8 on default source
+        }
         
         const episodes: Episode[] = [];
         const lines = urlStr.split('#');
@@ -327,7 +336,7 @@ export const parseAllSources = (detail: VodDetail): PlaySource[] => {
             let title = parts.length > 1 ? parts[0] : `第 ${epIdx + 1} 集`;
             const url = parts.length > 1 ? parts[1] : parts[0];
             
-            // Clean up title if it's junk
+            // Clean up title if it matches the code or is generic junk
             if (
                 title === code || 
                 title.toLowerCase() === 'm3u8' || 
@@ -346,7 +355,9 @@ export const parseAllSources = (detail: VodDetail): PlaySource[] => {
         });
         
         if (episodes.length > 0) {
-            // If the same source name exists (e.g. from same API providing multiple m3u8 lists), append code
+            // Naming Strategy:
+            // If the source name already exists in our list (e.g. "Ruyi" already added from a previous player code),
+            // append the code to differentiate: "Ruyi (ruyim3u8)"
             let finalName = sourceName;
             if (sources.some(s => s.name === sourceName)) {
                  finalName = `${sourceName} (${code})`;

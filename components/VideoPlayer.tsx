@@ -83,6 +83,7 @@ function filterAdsFromM3U8(m3u8Content: string): string {
 
 // ================= API Configuration =================
 const DANMAKU_API_BASE = 'https://dm1.laidd.de5.net/5573108';
+const API_MATCH = `${DANMAKU_API_BASE}/api/v2/match`;
 const API_SEARCH_EPISODES = `${DANMAKU_API_BASE}/api/v2/search/episodes`;
 const API_COMMENT = `${DANMAKU_API_BASE}/api/v2/comment`;
 
@@ -158,6 +159,19 @@ const transformDanmaku = (comments: any[]) => {
     }).filter((item): item is NonNullable<typeof item> => item !== null);
 };
 
+const fetchComments = async (episodeId: string | number) => {
+    try {
+        const commentUrl = `${API_COMMENT}/${episodeId}?withRelated=true&ch_convert=1`;
+        const res = await robustFetch(commentUrl, false);
+        const data = await res.json();
+        const rawComments = data.comments || data;
+        return transformDanmaku(rawComments);
+    } catch (e) {
+        console.warn('Failed to fetch comments', e);
+        return [];
+    }
+};
+
 const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: string) => {
     if (!title) return [];
     
@@ -171,9 +185,28 @@ const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: strin
     const episodeNum = episodeIndex + 1;
     console.log(`Searching Danmaku for: [${cleanTitle}] Ep: ${episodeNum}`);
 
+    // STRATEGY 1: Match API (Virtual Filename)
+    // This constructs a filename like "[CineStream] Title - 01.mp4" which DandanPlay's matcher usually accepts.
+    try {
+        const epStr = episodeNum < 10 ? `0${episodeNum}` : `${episodeNum}`;
+        const virtualFileName = `[CineStream] ${cleanTitle} - ${epStr} [Web].mp4`;
+        const matchUrl = `${API_MATCH}?fileName=${encodeURIComponent(virtualFileName)}&hash=0&length=0`;
+        
+        const matchRes = await robustFetch(matchUrl, false);
+        const matchData = await matchRes.json();
+        
+        if (matchData.isMatched && matchData.matches && matchData.matches.length > 0) {
+            const bestMatch = matchData.matches[0];
+            console.log('Danmaku Matched via API:', bestMatch);
+            return await fetchComments(bestMatch.episodeId);
+        }
+    } catch (e) {
+        console.warn('Match API failed, falling back to search', e);
+    }
+
+    // STRATEGY 2: Search API (Fallback)
     try {
         const searchUrl = `${API_SEARCH_EPISODES}?anime=${encodeURIComponent(cleanTitle)}`;
-        // Use direct fetch first for API, often faster and works if CORS is allowed
         const res = await robustFetch(searchUrl, false); 
         const data = await res.json();
         
@@ -226,15 +259,7 @@ const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: strin
         }
 
         if (episodeId) {
-            const commentUrl = `${API_COMMENT}/${episodeId}?withRelated=true&format=json`;
-            const cRes = await robustFetch(commentUrl, false);
-            const cData = await cRes.json();
-            
-            const rawComments = cData.comments || cData;
-            if (rawComments) {
-                const comments = transformDanmaku(rawComments);
-                return comments;
-            }
+            return await fetchComments(episodeId);
         }
     } catch (e) {
         console.warn('Danmaku fetch failed', e);

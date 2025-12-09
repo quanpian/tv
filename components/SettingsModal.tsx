@@ -45,7 +45,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const handleAdd = (e: React.FormEvent) => {
         e.preventDefault();
         if (!newName || !newApi) return;
-        addVodSource(newName, newApi);
+        // Trim inputs to avoid URL mismatch issues
+        addVodSource(newName.trim(), newApi.trim());
         setSources(getVodSources());
         setNewName('');
         setNewApi('');
