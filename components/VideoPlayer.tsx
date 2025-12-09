@@ -90,6 +90,10 @@ const API_COMMENT = `${DANMAKU_API_BASE}/api/v2/comment`;
 // GLOBAL CUSTOM PROXY
 const GLOBAL_PROXY = 'https://daili.laidd.de5.net/?url=';
 
+// Memory Cache to speed up switching episodes in same series
+const DANMAKU_CACHE = new Map<string, number>(); // title_epIndex -> episodeId
+const ANIME_CACHE = new Map<string, number>();   // title -> animeId
+
 // Robust Fetch: Tries direct first, then proxy
 const robustFetch = async (url: string, forceProxy = false) => {
     // 1. Try Direct Fetch (Fastest) if not forced to proxy
@@ -177,97 +181,130 @@ const fetchComments = async (episodeId: string | number) => {
     }
 };
 
+// Smarter Title Cleaning: Preserves Season/Part info, removes Technical tags
+const getSearchTerm = (title: string): string => {
+    return title
+        .replace(/[\(\[\{【](?!Part|Vol|Ep|Season|第).+?[\)\]\}】]/gi, ' ') // Remove brackets but keep season/ep info if caught
+        .replace(/(?:4k|1080p|720p|hd|bd|web-dl|hdtv|dvdrip|x264|x265|aac|dd5\.1|国语|粤语|中字|双语|完整版|未删减|电视剧|动漫|综艺|movie|tv)/gi, ' ')
+        .replace(/\./g, ' ') // Replace dots with spaces for search
+        .replace(/\s+/g, ' ')
+        .trim();
+};
+
 const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: string) => {
     if (!title) return [];
     
-    // Improved Cleaning Logic: Keep numbers, remove garbage
-    const cleanTitle = title
-        .replace(/(\s*第\s*\d+\s*季)|(\s*[Ss]eason\s*\d+)/gi, ' ') 
-        .replace(/[\(\[\{【](?!Part|Vol|Ep).*?[\)\]\}】]/gi, '') 
-        .replace(/电视剧|动漫|综艺|movie|tv|4k|1080p|hd|国语|完整版/gi, '')
-        .trim();
-    
+    // 0. Check Cache
+    const cacheKey = `${title}_${episodeIndex}`;
+    if (DANMAKU_CACHE.has(cacheKey)) {
+        console.log('Danmaku Cache Hit');
+        return await fetchComments(DANMAKU_CACHE.get(cacheKey)!);
+    }
+
+    const cleanTitle = getSearchTerm(title);
     const episodeNum = episodeIndex + 1;
+    const epStr = episodeNum < 10 ? `0${episodeNum}` : `${episodeNum}`;
+    
     console.log(`Searching Danmaku for: [${cleanTitle}] Ep: ${episodeNum}`);
 
-    // STRATEGY 1: Match API (Virtual Filename)
-    try {
-        const epStr = episodeNum < 10 ? `0${episodeNum}` : `${episodeNum}`;
-        // Standard Dandanplay naming format
-        const virtualFileName = `[CineStream] ${cleanTitle} - ${epStr} [Web].mp4`;
-        const matchUrl = `${API_MATCH}?fileName=${encodeURIComponent(virtualFileName)}&hash=0&length=0`;
-        
-        const matchRes = await robustFetch(matchUrl, false);
-        const matchData = await matchRes.json();
-        
-        if (matchData.isMatched && matchData.matches && matchData.matches.length > 0) {
-            const bestMatch = matchData.matches[0];
-            console.log('Danmaku Matched via API:', bestMatch);
-            return await fetchComments(bestMatch.episodeId);
-        }
-    } catch (e) {
-        // console.warn('Match API failed, falling back to search', e);
+    let matchedEpisodeId: number | null = null;
+
+    // STRATEGY 1: Match API (Smart Virtual Filename)
+    // Try multiple standard naming conventions to maximize hit rate
+    const virtualFiles = [
+        `[Group] ${cleanTitle} - ${epStr}.mp4`,
+        `${cleanTitle} ${epStr}.mp4`,
+        `${cleanTitle} - ${epStr}.mp4`,
+        `${cleanTitle} 第${epStr}集.mp4`,
+        `${cleanTitle} S01E${epStr}.mp4`
+    ];
+
+    for (const fileName of virtualFiles) {
+        try {
+            const matchUrl = `${API_MATCH}?fileName=${encodeURIComponent(fileName)}&hash=0&length=0`;
+            const matchRes = await robustFetch(matchUrl, false);
+            const matchData = await matchRes.json();
+            
+            if (matchData.isMatched && matchData.matches && matchData.matches.length > 0) {
+                matchedEpisodeId = matchData.matches[0].episodeId;
+                console.log(`Danmaku Matched via filename: ${fileName}`);
+                break;
+            }
+        } catch (e) { /* continue */ }
     }
 
     // STRATEGY 2: Search API (Fallback)
-    try {
-        const searchUrl = `${API_SEARCH_EPISODES}?anime=${encodeURIComponent(cleanTitle)}`;
-        const res = await robustFetch(searchUrl, false); 
-        const data = await res.json();
-        
-        let episodeId: number | null = null;
-
-        if (data.animes && Array.isArray(data.animes)) {
-            // Scoring system to find best anime match
-            const scoredAnimes = data.animes.map((anime: any) => {
-                let score = 0;
-                const animeTitle = (anime.animeTitle || '').toLowerCase();
-                const targetTitle = cleanTitle.toLowerCase();
-
-                if (animeTitle === targetTitle) score += 100;
-                else if (animeTitle.includes(targetTitle)) score += 60;
-                else if (targetTitle.includes(animeTitle)) score += 50;
-
-                // Penalty/Bonus for "Movie" vs "TV" matching
-                const isTargetMovie = title.includes('剧场版') || title.includes('电影');
-                const isAnimeMovie = anime.type === 'movie' || animeTitle.includes('剧场版');
-                if (isTargetMovie === isAnimeMovie) score += 30;
-
-                return { ...anime, score };
-            }).sort((a: any, b: any) => b.score - a.score);
-
-            const bestAnime = scoredAnimes[0];
+    if (!matchedEpisodeId) {
+        try {
+            const searchUrl = `${API_SEARCH_EPISODES}?anime=${encodeURIComponent(cleanTitle)}`;
+            const res = await robustFetch(searchUrl, false); 
+            const data = await res.json();
             
-            if (bestAnime && bestAnime.score > 40) {
-                 // Try exact title matching first
-                 const regexes = [
-                    new RegExp(`(?:第|EP|E|Vol\\.?|Episode)\\s*0*${episodeNum}(?:\\s|$)`, 'i'),
-                    new RegExp(`^\\s*0*${episodeNum}\\s*$`),
-                    new RegExp(`\\s+0*${episodeNum}\\s+`), 
-                ];
+            if (data.animes && Array.isArray(data.animes)) {
+                // Scoring system to find best anime match
+                const scoredAnimes = data.animes.map((anime: any) => {
+                    let score = 0;
+                    const animeTitle = (anime.animeTitle || '').toLowerCase();
+                    const targetTitle = cleanTitle.toLowerCase();
 
-                const targetEp = bestAnime.episodes.find((ep: any) => {
-                    let t = ep.episodeTitle || '';
-                    t = t.replace(/[【\[].*?[】\]]/g, '').trim(); // Clean episode title
-                    return regexes.some(r => r.test(t));
-                });
+                    // Exact match
+                    if (animeTitle === targetTitle) score += 100;
+                    // Contains match
+                    else if (animeTitle.includes(targetTitle)) score += 60;
+                    else if (targetTitle.includes(animeTitle)) score += 50;
 
-                if (targetEp) {
-                    episodeId = targetEp.episodeId;
-                } else {
-                    // Fallback to index if available and reasonably safe
-                    if (bestAnime.episodes.length > episodeIndex) {
-                        episodeId = bestAnime.episodes[episodeIndex].episodeId;
+                    // Season Check: If target has "Season 2" or "II", prefer similar in animeTitle
+                    const seasonRegex = /(?:Season\s*(\d+)|第\s*(\d+)\s*季|\s(II|III|IV|V)\s)/i;
+                    const targetSeason = title.match(seasonRegex);
+                    const animeSeason = animeTitle.match(seasonRegex);
+                    if (targetSeason && animeSeason && targetSeason[0] === animeSeason[0]) {
+                        score += 80;
+                    }
+
+                    // Type match penalty/bonus
+                    const isTargetMovie = title.includes('剧场版') || title.includes('电影');
+                    const isAnimeMovie = anime.type === 'movie' || animeTitle.includes('剧场版');
+                    if (isTargetMovie === isAnimeMovie) score += 30;
+
+                    return { ...anime, score };
+                }).sort((a: any, b: any) => b.score - a.score);
+
+                // Filter out low scores
+                const bestAnime = scoredAnimes[0];
+                
+                if (bestAnime && bestAnime.score > 40) {
+                    // Try to find episode
+                    // Regex patterns to match "01", "1", "01v2", "EP01", "第1话"
+                    const regexes = [
+                        new RegExp(`(?:^|\\s|第|EP|E|Vol\\.?|Episode)\\s*0*${episodeNum}(?:\\s|$|v\\d|集|话|END)`, 'i'),
+                        new RegExp(`^\\s*0*${episodeNum}\\s*$`),
+                    ];
+
+                    const targetEp = bestAnime.episodes.find((ep: any) => {
+                        let t = ep.episodeTitle || '';
+                        t = t.replace(/[【\[].*?[】\]]/g, '').trim(); 
+                        return regexes.some(r => r.test(t));
+                    });
+
+                    if (targetEp) {
+                        matchedEpisodeId = targetEp.episodeId;
+                    } else if (bestAnime.episodes.length > episodeIndex) {
+                        // Fallback to index if available and reasonably safe (e.g. series with enough eps)
+                        // Only do this for TV series where index usually aligns
+                        if (bestAnime.type === 'tvseries' || bestAnime.type === 'tv') {
+                             matchedEpisodeId = bestAnime.episodes[episodeIndex].episodeId;
+                        }
                     }
                 }
             }
+        } catch (e) {
+            console.warn('Danmaku fetch failed', e);
         }
+    }
 
-        if (episodeId) {
-            return await fetchComments(episodeId);
-        }
-    } catch (e) {
-        console.warn('Danmaku fetch failed', e);
+    if (matchedEpisodeId) {
+        DANMAKU_CACHE.set(cacheKey, matchedEpisodeId);
+        return await fetchComments(matchedEpisodeId);
     }
     
     return [];
