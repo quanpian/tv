@@ -160,6 +160,7 @@ const NavBar = ({ activeTab, onTabChange, onSettingsClick }: { activeTab: string
     );
 };
 
+// ... HeroBanner, HorizontalSection, FilterSection, CategoryGrid components remain same ...
 const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodItem) => void }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [detail, setDetail] = useState<any>(null);
@@ -755,7 +756,7 @@ const App: React.FC = () => {
                       
                       <div className="flex flex-col lg:flex-row gap-6 items-start h-auto relative transition-all duration-300">
                           {/* Video Player Container */}
-                          <div className={`flex-1 w-full bg-black rounded-xl overflow-hidden border border-white/5 shadow-2xl relative group transition-all duration-300 z-10 ${!showSidePanel ? 'lg:h-[600px]' : 'lg:h-[500px]'}`}>
+                          <div className={`flex-1 w-full bg-black rounded-xl overflow-hidden border border-white/5 shadow-2xl relative group transition-all duration-300 z-10 ${!showSidePanel ? 'lg:h-[650px]' : 'lg:h-[500px]'}`}>
                               <VideoPlayer 
                                   url={currentEpUrl} 
                                   poster={currentMovie.vod_pic}
@@ -777,18 +778,18 @@ const App: React.FC = () => {
                           {showSidePanel && (
                               <div className="w-full lg:w-[320px] flex flex-col gap-2 flex-shrink-0 animate-fade-in relative z-0">
                                   
-                                  {/* Hide Button Container - Above the box as requested */}
-                                  <div className="flex justify-end">
+                                  {/* Hide Button Container - Positioned ABOVE the panel as requested */}
+                                  <div className="flex justify-end absolute -top-10 right-0 z-20">
                                       <button 
                                         onClick={() => setShowSidePanel(false)}
-                                        className="bg-[#1a1f2e] hover:bg-brand hover:text-black text-gray-300 text-xs px-4 py-1.5 rounded-full flex items-center gap-1.5 border border-white/10 shadow-lg transition-all duration-300"
+                                        className="bg-[#1a1f2e]/80 hover:bg-brand hover:text-black text-gray-300 text-xs px-4 py-1.5 rounded-full flex items-center gap-1.5 border border-white/10 shadow-lg transition-all duration-300 backdrop-blur-md"
                                       >
                                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
                                           隐藏
                                       </button>
                                   </div>
 
-                                  <div className="w-full bg-[#1a1f2e] border border-white/5 rounded-xl overflow-hidden flex flex-col min-h-[300px] lg:h-[460px] shadow-2xl">
+                                  <div className="w-full bg-[#1a1f2e] border border-white/5 rounded-xl overflow-hidden flex flex-col min-h-[300px] lg:h-[500px] shadow-2xl mt-0">
                                       {/* Tabs Header */}
                                       <div className="flex items-center border-b border-white/5 bg-[#141824]">
                                           <button 

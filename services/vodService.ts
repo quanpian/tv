@@ -309,14 +309,15 @@ export const parseAllSources = (detail: VodDetail): PlaySource[] => {
 
     const sources: PlaySource[] = [];
     
-    // Check how many valid M3U8 sources exist to decide if we need to append the format code
-    const m3u8Sources = fromArray.filter(f => f.toLowerCase().includes('m3u8'));
-
     fromArray.forEach((code, idx) => {
         const urlStr = urlArray[idx];
         if (!urlStr) return;
 
-        // FILTER: ONLY KEEP M3U8 SOURCES
+        // STRICT FILTER: ONLY KEEP M3U8 SOURCES
+        // We check if the code explicitly contains m3u8 OR if the content is truly m3u8
+        // Usually 'vod_play_from' codes are like 'ikm3u8', 'ffm3u8'. 
+        // Some APIs use 'm3u8' directly.
+        // We will filter by the code name containing 'm3u8' to be safe and match user request "Only keep m3u8".
         if (!code.toLowerCase().includes('m3u8')) return;
         
         const episodes: Episode[] = [];
@@ -325,21 +326,35 @@ export const parseAllSources = (detail: VodDetail): PlaySource[] => {
             const parts = line.split('$');
             let title = parts.length > 1 ? parts[0] : `第 ${epIdx + 1} 集`;
             const url = parts.length > 1 ? parts[1] : parts[0];
+            
+            // Clean up title if it accidentally picked up the source name or generic M3U8 label
+            if (title === code || title.toLowerCase() === 'm3u8' || title.toLowerCase() === 'mp4' || title === sourceName) {
+                title = `第 ${epIdx + 1} 集`;
+            }
+
              if (url && (url.startsWith('http') || url.startsWith('//'))) {
                   const finalUrl = url.startsWith('//') ? `https:${url}` : url;
-                  if (!title || title === finalUrl) title = `EP ${epIdx + 1}`;
                   episodes.push({ title, url: finalUrl, index: epIdx });
              }
         });
         
         if (episodes.length > 0) {
-            // If there are multiple M3U8 variants, append the code (e.g. "Official (ffm3u8)")
-            // Otherwise just use the Source Name (e.g. "Official")
-            let finalName = sourceName;
-            if (m3u8Sources.length > 1) {
-                finalName = `${sourceName} (${code})`;
-            }
+            // Use the Source Name defined in Settings (api name)
+            // If we have multiple m3u8 sources from the SAME API, we might need to distinguish them, 
+            // but usually a single API returns one m3u8 set per movie.
+            // If the user adds "Official", we use "Official".
             
+            // Note: If an API returns multiple m3u8 formats (e.g. 'ffm3u8' and 'lzm3u8'), 
+            // we should probably append the code to distinguish, unless the user strictly wants the API Name.
+            // The prompt says "Resource name use name: e.g. Official".
+            // We will use Source Name. If collision (multiple groups), we append code.
+            
+            let finalName = sourceName;
+            const isDuplicate = sources.some(s => s.name === sourceName);
+            if (isDuplicate) {
+                 finalName = `${sourceName} (${code})`;
+            }
+
             sources.push({ name: finalName, episodes });
         }
     });
@@ -348,7 +363,6 @@ export const parseAllSources = (detail: VodDetail): PlaySource[] => {
 }
 
 export const parseEpisodes = (urlStr: string, fromStr: string): Episode[] => {
-  // Legacy support using parseAllSources
   const dummyDetail = { vod_play_url: urlStr, vod_play_from: fromStr } as VodDetail;
   const sources = parseAllSources(dummyDetail);
   return sources[0]?.episodes || [];
@@ -356,7 +370,7 @@ export const parseEpisodes = (urlStr: string, fromStr: string): Episode[] => {
 
 export const enrichVodDetail = async (detail: VodDetail): Promise<Partial<VodDetail> | null> => {
     try {
-        const doubanData = await fetchDoubanData(detail.vod_name);
+        const doubanData = await fetchDoubanData(detail.vod_name, detail.vod_douban_id);
         if (doubanData) {
             const updates: Partial<VodDetail> = {};
             if (doubanData.score) updates.vod_score = doubanData.score;
@@ -364,7 +378,7 @@ export const enrichVodDetail = async (detail: VodDetail): Promise<Partial<VodDet
             if (doubanData.recs) updates.vod_recs = doubanData.recs;
             if (doubanData.actorsExtended) updates.vod_actors_extended = doubanData.actorsExtended;
             
-            // Fix: Ensure content/synopsis is also updated
+            // Ensure content/synopsis is also updated
             if (doubanData.content) updates.vod_content = doubanData.content;
             
             if (doubanData.director) updates.vod_director = doubanData.director;
@@ -399,16 +413,106 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
     const html = await fetchWithProxy(pageUrl);
     if (!html || typeof html !== 'string') return null;
     
+    // Robust Parsing using DOMParser
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
     const result: any = { doubanId: String(targetId) };
-    const scoreMatch = html.match(/property="v:average">([\d\.]+)<\/strong>/);
-    if(scoreMatch) result.score = scoreMatch[1];
+
+    // 1. Try JSON-LD (Best Source)
+    const script = doc.querySelector('script[type="application/ld+json"]');
+    if (script) {
+        try {
+            const ld = JSON.parse(script.textContent || '{}');
+            result.name = ld.name;
+            result.pic = ld.image;
+            result.score = ld.aggregateRating?.ratingValue;
+            result.director = Array.isArray(ld.director) ? ld.director.map((d:any) => d.name).join(' / ') : ld.director?.name;
+            result.actor = Array.isArray(ld.actor) ? ld.actor.map((a:any) => a.name).join(' / ') : ld.actor?.name;
+            result.pubdate = ld.datePublished;
+            result.duration = ld.duration ? ld.duration.replace('PT', '').replace('H', '小时').replace('M', '分') : '';
+        } catch(e) {}
+    }
+
+    // 2. Fallback/Supplement from DOM (#info block)
+    const info = doc.getElementById('info');
+    if (info) {
+        const getField = (label: string) => {
+             const labelEl = Array.from(info.querySelectorAll('span.pl')).find(el => el.textContent?.includes(label));
+             if (labelEl) {
+                 // Text node immediately after
+                 if (labelEl.nextSibling && labelEl.nextSibling.nodeType === 3) {
+                     return labelEl.nextSibling.textContent?.trim();
+                 }
+                 // Or structured like span.pl + span.attrs
+                 let content = '';
+                 let curr = labelEl.nextSibling;
+                 // Gather text until next label or break
+                 while(curr && (curr.nodeType === 3 || (curr.nodeType === 1 && !(curr as Element).classList.contains('pl')))) {
+                     content += curr.textContent;
+                     curr = curr.nextSibling;
+                 }
+                 return content.replace(/:/g, '').trim();
+             }
+             return '';
+        };
+
+        if (!result.director) result.director = getField('导演');
+        if (!result.writer) result.writer = getField('编剧');
+        if (!result.actor) result.actor = getField('主演');
+        if (!result.type_name) result.type_name = getField('类型');
+        
+        result.area = getField('制片国家/地区');
+        result.lang = getField('语言');
+        result.alias = getField('又名');
+        result.imdb = getField('IMDb');
+        result.episodeCount = getField('集数');
+        if (!result.duration) result.duration = getField('单集片长') || getField('片长');
+    }
     
-    const picMatch = html.match(/rel="v:image" src="([^"]+)"/);
-    if (picMatch) result.pic = picMatch[1].replace(/s_ratio_poster|m(?=\/public)/, 'l');
+    // 3. Synopsis
+    const summary = doc.querySelector('span[property="v:summary"]');
+    if (summary) {
+        result.content = summary.textContent?.trim().replace(/<br\s*\/?>/gi, '\n').replace(/\s+/g, ' ');
+    }
+
+    // 4. Score Fallback
+    if (!result.score) {
+        const rating = doc.querySelector('strong[property="v:average"]');
+        if (rating) result.score = rating.textContent?.trim();
+    }
     
-    const summaryMatch = html.match(/property="v:summary"[^>]*>([\s\S]*?)<\/span>/);
-    // Parse breaks to newlines for better display
-    if (summaryMatch) result.content = summaryMatch[1].replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
+    // 5. Picture Fallback
+    if (!result.pic) {
+        const img = doc.querySelector('#mainpic img');
+        if (img) result.pic = img.getAttribute('src');
+    }
+
+    // 6. Cast Images (Visual List) - #celebrities
+    const celebrityItems = doc.querySelectorAll('#celebrities .celebrity');
+    if (celebrityItems.length > 0) {
+        result.actorsExtended = Array.from(celebrityItems).slice(0, 10).map(el => {
+            const name = el.querySelector('.name')?.textContent?.trim() || '';
+            const role = el.querySelector('.role')?.textContent?.trim() || '';
+            let pic = el.querySelector('.avatar')?.getAttribute('style')?.match(/url\((.*?)\)/)?.[1] || '';
+            if (!pic) pic = el.querySelector('img')?.getAttribute('src') || '';
+            return { name, role, pic: pic.replace(/s_ratio_poster|m(?=\/public)/, 'l') };
+        }).filter(a => a.name);
+    }
+
+    // 7. Recommendations - #recommendations
+    const recItems = doc.querySelectorAll('.recommendations-bd dl');
+    if (recItems.length > 0) {
+        result.recs = Array.from(recItems).slice(0, 10).map(el => {
+            const img = el.querySelector('img');
+            const a = el.querySelector('dd a');
+            return {
+                name: img?.getAttribute('alt') || a?.textContent?.trim() || '',
+                pic: img?.getAttribute('src') || '',
+                doubanId: el.querySelector('dd a')?.getAttribute('href')?.match(/subject\/(\d+)/)?.[1]
+            };
+        }).filter(r => r.name);
+    }
 
     return result;
   } catch (e) { return null; }
