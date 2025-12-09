@@ -1,13 +1,15 @@
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom'; // Import Router hooks
-import { getHomeSections, searchMovies, getMovieDetail, parseAllSources, enrichVodDetail, fetchDoubanData, fetchCategoryItems } from './services/vodService';
-import VideoPlayer from './components/VideoPlayer';
+import { getHomeSections, searchMovies, getMovieDetail, parseAllSources, enrichVodDetail, fetchDoubanData, fetchCategoryItems, getHistory, addToHistory } from './services/vodService';
 import MovieInfoCard from './components/MovieInfoCard';
-import GeminiChat from './components/GeminiChat';
 import ImageWithFallback from './components/ImageWithFallback';
-import SettingsModal from './components/SettingsModal';
-import { VodItem, VodDetail, Episode, PlaySource } from './types';
+import { VodItem, VodDetail, Episode, PlaySource, HistoryItem } from './types';
+
+// Lazy Load Heavy Components
+const VideoPlayer = lazy(() => import('./components/VideoPlayer'));
+const GeminiChat = lazy(() => import('./components/GeminiChat'));
+const SettingsModal = lazy(() => import('./components/SettingsModal'));
 
 // Icons
 const NavIcons = {
@@ -160,7 +162,7 @@ const NavBar = ({ activeTab, onTabChange, onSettingsClick }: { activeTab: string
     );
 };
 
-// ... HeroBanner, HorizontalSection, FilterSection, CategoryGrid components remain same ...
+// ... HeroBanner, HorizontalSection, FilterSection, CategoryGrid components ...
 const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodItem) => void }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [detail, setDetail] = useState<any>(null);
@@ -302,7 +304,7 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
     );
 };
 
-const HorizontalSection = ({ title, items, id, onItemClick }: { title: string, items: VodItem[], id: string, onItemClick: (item: VodItem) => void }) => {
+const HorizontalSection = ({ title, items, id, onItemClick }: { title: string, items: (VodItem | HistoryItem)[], id: string, onItemClick: (item: VodItem) => void }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const scroll = (direction: 'left' | 'right') => {
         if (scrollRef.current) {
@@ -325,19 +327,36 @@ const HorizontalSection = ({ title, items, id, onItemClick }: { title: string, i
           </button>
           <div className="-mx-4 md:mx-0 px-4 md:px-0">
               <div ref={scrollRef} className="flex gap-3 md:gap-4 overflow-x-auto pb-4 visible-scrollbar scroll-smooth">
-                  {items.map((item) => (
+                  {items.map((item) => {
+                      const historyItem = item as HistoryItem;
+                      const hasHistory = 'episode_index' in item;
+                      
+                      return (
                       <div key={item.vod_id} onClick={() => onItemClick(item)} className="flex-shrink-0 w-28 sm:w-36 md:w-44 cursor-pointer group relative">
                           <div className="aspect-[2/3] rounded-lg md:rounded-xl overflow-hidden bg-gray-900 border border-white/10 relative shadow-lg group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1">
                                <ImageWithFallback src={item.vod_pic || ''} alt={item.vod_name || 'Poster'} searchKeyword={item.vod_name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                               {item.vod_score && (
                                   <div className="absolute top-1.5 right-1.5 bg-black/70 backdrop-blur text-yellow-400 text-[10px] md:text-xs font-bold px-1.5 py-0.5 rounded border border-white/10">{item.vod_score}</div>
                               )}
+                              
+                              {/* Continue Watching Overlay */}
+                              {hasHistory && (
+                                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" className="w-8 h-8 text-brand drop-shadow-lg"><path d="M8 5v14l11-7z"/></svg>
+                                  </div>
+                              )}
+
                               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/60 to-transparent p-2 md:p-3 pt-8 md:pt-10">
                                   <h4 className="text-xs md:text-sm font-bold text-white truncate group-hover:text-brand transition-colors">{item.vod_name}</h4>
+                                  {hasHistory ? (
+                                      <div className="text-[10px] text-brand font-medium mt-0.5 truncate">
+                                          {historyItem.episode_name || `第${historyItem.episode_index + 1}集`}
+                                      </div>
+                                  ) : null}
                               </div>
                           </div>
                       </div>
-                  ))}
+                  )})}
               </div>
           </div>
       </div>
@@ -533,24 +552,87 @@ const App: React.FC = () => {
   }>({ movies: [], series: [], shortDrama: [], anime: [], variety: [] });
 
   const [heroItems, setHeroItems] = useState<VodItem[]>([]);
+  const [watchHistory, setWatchHistory] = useState<HistoryItem[]>([]);
 
   useEffect(() => {
-     if (location.pathname === '/') {
+      const path = location.pathname;
+
+      if (path === '/') {
           updateSEO(
-              'CineStream AI - 免费高清影视在线观看',
-              'CineStream AI提供最新最热的电影、电视剧、动漫、综艺高清在线观看。智能P2P加速，极速播放。',
-              '电影,电视剧,在线观看,CineStream,美剧,韩剧'
+              'CineStream AI-海量高清电影电视剧动漫综艺在线观看_中国领先的影视聚合平台',
+              'CineStream AI为您提供最新最热的电影、电视剧、综艺、动漫高清在线观看。包含国产剧、美剧、韩剧、日剧等海量资源，支持智能P2P加速与AI助手互动，致力于为您提供极致的视听体验。',
+              '电影,电视剧,综艺,动漫,视频,在线观看,CineStream AI,美剧,韩剧,4K,高清,免费视频'
           );
-      }
-      else if (location.pathname.startsWith('/play/') && currentMovie) {
+      } else if (path === '/dianying') {
           updateSEO(
-              `${currentMovie.vod_name} - 在线观看 - CineStream AI`,
-              `在线观看${currentMovie.vod_name}`,
-              `${currentMovie.vod_name},在线观看`,
+              '电影频道-2025最新好看的电影大全-高清电影在线观看-CineStream AI',
+              'CineStream AI电影频道汇集了全球最新最热的大片，涵盖动作、喜剧、科幻、恐怖、爱情等多种类型，提供高清流畅的在线观看体验。',
+              '电影,电影大全,高清电影,免费电影,在线观看,动作片,喜剧片,科幻片,CineStream AI'
+          );
+      } else if (path === '/dianshiju') {
+          updateSEO(
+              '电视剧频道-2025最新好看的电视剧大全-高清电视剧在线观看-CineStream AI',
+              'CineStream AI电视剧频道为您提供最新热播的国产剧、美剧、韩剧、日剧、港台剧等，同步更新，高清免费在线观看。',
+              '电视剧,电视剧大全,高清电视剧,国产剧,美剧,韩剧,日剧,在线观看,CineStream AI'
+          );
+      } else if (path === '/dongman') {
+          updateSEO(
+              '动漫频道-2025最新好看的动漫大全-高清动漫在线观看-CineStream AI',
+              'CineStream AI动漫频道为您提供最新好看的日本动漫、国产动漫、欧美动漫，海量新番连载，高清在线观看。',
+              '动漫,动漫大全,日本动漫,国产动漫,新番,在线观看,CineStream AI'
+          );
+      } else if (path === '/zongyi') {
+          updateSEO(
+              '综艺频道-2025最新好看的综艺大全-高清综艺在线观看-CineStream AI',
+              'CineStream AI综艺频道为您提供最新最热的国内综艺、韩国综艺、欧美综艺等，真人秀、脱口秀应有尽有。',
+              '综艺,综艺大全,韩国综艺,真人秀,在线观看,CineStream AI'
+          );
+      } else if (path.startsWith('/play/') && currentMovie) {
+          const rawContent = currentMovie.vod_content ? currentMovie.vod_content.replace(/<[^>]+>/g, '').slice(0, 150) : '暂无简介';
+          const actors = currentMovie.vod_actor || '';
+          const director = currentMovie.vod_director || '';
+          const type = currentMovie.type_name || '影视';
+          
+          updateSEO(
+              `《${currentMovie.vod_name}》免费在线观看_全集高清播放_${type}_CineStream AI`,
+              `CineStream AI为您提供《${currentMovie.vod_name}》免费高清在线观看，${currentMovie.vod_name}剧情介绍：${rawContent}...`,
+              `${currentMovie.vod_name},${currentMovie.vod_name}在线观看,${currentMovie.vod_name}全集,${actors},${director},${type},CineStream AI`,
               currentMovie.vod_pic
           );
+      } else if (path.startsWith('/sousuo')) {
+           const title = searchQuery ? `${searchQuery}-搜索结果-CineStream AI` : '搜索中心-CineStream AI';
+           updateSEO(
+              title,
+              'CineStream AI全网搜索，找到你想看的每一部影视作品。',
+              '搜索,视频搜索,影视搜索,CineStream AI'
+           );
       }
-  }, [location.pathname, currentMovie]);
+  }, [location.pathname, currentMovie, searchQuery]);
+
+  // Load Watch History on Mount
+  useEffect(() => {
+      setWatchHistory(getHistory());
+  }, []);
+
+  // Save episode progress to localStorage AND History list whenever it changes
+  useEffect(() => {
+      if (currentMovie && currentEpisodeIndex >= 0) {
+          // 1. Save standard progress
+          localStorage.setItem(`cine_last_episode_${currentMovie.vod_id}`, String(currentEpisodeIndex));
+          
+          // 2. Add to History List
+          const episodeName = episodes[currentEpisodeIndex] ? episodes[currentEpisodeIndex].title : `第${currentEpisodeIndex+1}集`;
+          const historyItem: HistoryItem = {
+              ...currentMovie,
+              episode_index: currentEpisodeIndex,
+              episode_name: episodeName,
+              last_updated: Date.now(),
+              source_index: currentSourceIndex
+          };
+          const updatedHistory = addToHistory(historyItem);
+          setWatchHistory(updatedHistory);
+      }
+  }, [currentEpisodeIndex, currentMovie]);
 
   const fetchInitial = useCallback(async () => {
        setLoading(true);
@@ -596,7 +678,34 @@ const App: React.FC = () => {
       }
       try {
           const data = await searchMovies(query);
-          setSearchResults((data.list || []) as VodItem[]);
+          let results = (data.list || []) as VodItem[];
+          
+          // --- SMART SORT BY ACTOR/DIRECTOR ---
+          // If the search query matches an actor or director name, prioritize those items.
+          const lowerQuery = query.toLowerCase();
+          results = results.sort((a, b) => {
+              const aActor = (a.vod_actor || '').toLowerCase();
+              const bActor = (b.vod_actor || '').toLowerCase();
+              const aDirector = (a.vod_director || '').toLowerCase();
+              const bDirector = (b.vod_director || '').toLowerCase();
+              const aTitle = (a.vod_name || '').toLowerCase();
+              const bTitle = (b.vod_name || '').toLowerCase();
+
+              const aHasPerson = aActor.includes(lowerQuery) || aDirector.includes(lowerQuery);
+              const bHasPerson = bActor.includes(lowerQuery) || bDirector.includes(lowerQuery);
+
+              // 1. Exact person match priority
+              if (aHasPerson && !bHasPerson) return -1;
+              if (!aHasPerson && bHasPerson) return 1;
+
+              // 2. Exact Title match priority
+              if (aTitle === lowerQuery && bTitle !== lowerQuery) return -1;
+              if (bTitle === lowerQuery && aTitle !== lowerQuery) return 1;
+
+              return 0;
+          });
+          
+          setSearchResults(results);
       } catch (error) {
           console.error("Search error", error);
       } finally {
@@ -610,6 +719,12 @@ const App: React.FC = () => {
   };
 
   const handleItemClick = async (item: VodItem) => {
+      // If clicking from History, restore source index if available
+      if ('source_index' in item && typeof (item as any).source_index === 'number') {
+           // We will handle source restoration in handleSelectMovie by checking history or localStorage
+           // But actually handleSelectMovie loads fresh detail. We rely on localStorage for episode.
+      }
+
       if (item.api_url && item.source !== 'douban') {
           handleSelectMovie(item.vod_id, item.api_url);
           navigate(`/play/${item.vod_id}`);
@@ -670,7 +785,15 @@ const App: React.FC = () => {
                   setCurrentSourceIndex(initialIndex);
                   setEpisodes(allSources[initialIndex].episodes);
                   setCurrentMovie(detail);
-                  setCurrentEpisodeIndex(0);
+                  
+                  // Restore episode index from localStorage
+                  const savedIndex = parseInt(localStorage.getItem(`cine_last_episode_${id}`) || '0');
+                  if (!isNaN(savedIndex) && savedIndex >= 0 && savedIndex < allSources[initialIndex].episodes.length) {
+                      setCurrentEpisodeIndex(savedIndex);
+                  } else {
+                      setCurrentEpisodeIndex(0);
+                  }
+                  
                   window.scrollTo({ top: 0, behavior: 'smooth' });
 
                   enrichVodDetail(detail).then(updates => {
@@ -697,9 +820,16 @@ const App: React.FC = () => {
   // Switch source handler
   const handleSourceChange = (index: number) => {
       setCurrentSourceIndex(index);
-      setEpisodes(availableSources[index].episodes);
-      setCurrentEpisodeIndex(0);
-      setSidePanelTab('episodes'); // auto switch back to episodes
+      const newEpisodes = availableSources[index].episodes;
+      setEpisodes(newEpisodes);
+      
+      // Try to keep current episode index if within bounds of new source
+      if (currentEpisodeIndex >= 0 && currentEpisodeIndex < newEpisodes.length) {
+          setCurrentEpisodeIndex(currentEpisodeIndex);
+      } else {
+          setCurrentEpisodeIndex(0);
+      }
+      setSidePanelTab('episodes'); 
   };
 
   const currentEpUrl = useMemo(() => {
@@ -736,7 +866,9 @@ const App: React.FC = () => {
       <div className="relative min-h-screen pb-20 overflow-x-hidden font-sans pt-24 lg:pt-16">
           <NavBar activeTab={activeTab} onTabChange={handleTabChange} onSettingsClick={() => setShowSettings(true)} />
 
-          <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+          <Suspense fallback={null}>
+               <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+          </Suspense>
 
           {loading && currentMovie === null && !hasSearched && (
                <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center animate-fade-in">
@@ -757,15 +889,21 @@ const App: React.FC = () => {
                       <div className="flex flex-col lg:flex-row gap-6 items-start h-auto relative transition-all duration-300">
                           {/* Video Player Container */}
                           <div className={`flex-1 w-full bg-black rounded-xl overflow-hidden border border-white/5 shadow-2xl relative group transition-all duration-300 z-10 ${!showSidePanel ? 'lg:h-[650px]' : 'lg:h-[500px]'}`}>
-                              <VideoPlayer 
-                                  url={currentEpUrl} 
-                                  poster={currentMovie.vod_pic}
-                                  title={currentMovie.vod_name}
-                                  episodeIndex={currentEpisodeIndex}
-                                  doubanId={currentMovie.vod_douban_id}
-                                  onEnded={handleEpisodeEnd}
-                                  onNext={handleNextEpisode}
-                              />
+                              <Suspense fallback={
+                                  <div className="w-full h-full bg-black flex items-center justify-center">
+                                      <div className="animate-spin h-10 w-10 border-4 border-brand border-t-transparent rounded-full"></div>
+                                  </div>
+                              }>
+                                  <VideoPlayer 
+                                      url={currentEpUrl} 
+                                      poster={currentMovie.vod_pic}
+                                      title={currentMovie.vod_name}
+                                      episodeIndex={currentEpisodeIndex}
+                                      doubanId={currentMovie.vod_douban_id}
+                                      onEnded={handleEpisodeEnd}
+                                      onNext={handleNextEpisode}
+                                  />
+                              </Suspense>
                               {!showSidePanel && (
                                   <button onClick={() => setShowSidePanel(true)} className="absolute top-4 right-4 z-20 bg-black/60 backdrop-blur-md text-white/90 border border-white/10 rounded-full px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-brand/20 hover:border-brand/30 hover:text-brand transition-all shadow-lg opacity-0 group-hover:opacity-100">
                                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
@@ -884,7 +1022,7 @@ const App: React.FC = () => {
                                                 type="text"
                                                 value={searchQuery}
                                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                                placeholder="搜索电影、电视剧、动漫..."
+                                                placeholder="搜索电影、电视剧、演员..."
                                                 className="flex-1 bg-transparent px-6 py-3 text-sm md:text-base text-gray-100 placeholder-gray-500 focus:outline-none"
                                             />
                                             <button type="submit" disabled={loading} className="bg-brand hover:bg-brand-hover text-black font-bold py-2.5 px-6 rounded-full transition-all duration-300 flex items-center gap-2 shadow-lg disabled:opacity-70">
@@ -941,6 +1079,8 @@ const App: React.FC = () => {
                                     
                                     {!loading && (
                                         <>
+                                            <HorizontalSection id="history" title="继续观看" items={watchHistory} onItemClick={handleItemClick} />
+
                                             <HorizontalSection id="movies" title="热门电影" items={homeSections.movies} onItemClick={handleItemClick} />
                                             <HorizontalSection id="series" title="热门剧集" items={homeSections.series} onItemClick={handleItemClick} />
                                             <HorizontalSection id="short" title="爆款短剧" items={homeSections.shortDrama} onItemClick={handleItemClick} />
@@ -958,7 +1098,9 @@ const App: React.FC = () => {
               )}
           </div>
 
-          <GeminiChat currentMovie={currentMovie} />
+          <Suspense fallback={null}>
+               <GeminiChat currentMovie={currentMovie} />
+          </Suspense>
       </div>
   );
 };

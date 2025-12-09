@@ -1,5 +1,5 @@
 
-import { Episode, VodDetail, ApiResponse, ActorItem, RecommendationItem, VodItem, VodSource, PlaySource } from '../types';
+import { Episode, VodDetail, ApiResponse, ActorItem, RecommendationItem, VodItem, VodSource, PlaySource, HistoryItem } from '../types';
 
 // DEFAULT SOURCE
 const DEFAULT_SOURCE: VodSource = {
@@ -12,6 +12,41 @@ const DEFAULT_SOURCE: VodSource = {
 
 // GLOBAL CUSTOM PROXY
 const GLOBAL_PROXY = 'https://daili.laidd.de5.net/?url=';
+
+// CACHE CONFIG
+const HOME_CACHE_KEY = 'cine_home_data_v2';
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+const HISTORY_KEY = 'cine_watch_history';
+
+// --- HISTORY MANAGEMENT ---
+
+export const getHistory = (): HistoryItem[] => {
+    try {
+        const stored = localStorage.getItem(HISTORY_KEY);
+        if (stored) {
+            return JSON.parse(stored);
+        }
+    } catch(e) {}
+    return [];
+};
+
+export const addToHistory = (item: HistoryItem) => {
+    try {
+        let history = getHistory();
+        // Remove existing entry for same ID
+        history = history.filter(h => String(h.vod_id) !== String(item.vod_id));
+        // Add new to top
+        history.unshift(item);
+        // Cap at 20 items
+        if (history.length > 20) history = history.slice(0, 20);
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+        return history;
+    } catch(e) { return []; }
+};
+
+export const clearHistory = () => {
+    localStorage.removeItem(HISTORY_KEY);
+};
 
 // --- SOURCE MANAGEMENT ---
 
@@ -143,6 +178,20 @@ const fetchDoubanJson = async (type: string, tag: string, limit = 12, sort = 're
 };
 
 export const getHomeSections = async () => {
+    // 1. Try Cache First
+    try {
+        const cached = localStorage.getItem(HOME_CACHE_KEY);
+        if (cached) {
+            const { data, timestamp } = JSON.parse(cached);
+            if (Date.now() - timestamp < CACHE_TTL) {
+                 if (data.movies && data.movies.length > 0) {
+                     return data;
+                 }
+            }
+        }
+    } catch (e) {}
+
+    // 2. Fetch if no cache
     const safeFetch = async (fn: Promise<VodItem[]>) => {
         try { 
             const res = await fn; 
@@ -159,6 +208,17 @@ export const getHomeSections = async () => {
     ]);
     
     const isCriticalEmpty = movies.length === 0 && series.length === 0;
+    
+    // 3. Save Cache (Only if we have real data)
+    if (!isCriticalEmpty) {
+        try {
+            const cacheData = { movies, series, shortDrama, anime, variety };
+            localStorage.setItem(HOME_CACHE_KEY, JSON.stringify({
+                data: cacheData,
+                timestamp: Date.now()
+            }));
+        } catch (e) {}
+    }
     
     if (isCriticalEmpty) {
         return {
@@ -320,8 +380,8 @@ export const parseAllSources = (detail: VodDetail): PlaySource[] => {
         if (!urlStr) return;
 
         // FILTER LOGIC:
-        // 1. If it's a Custom Source (user added), we TRUST it. Show everything (m3u8, mp4, etc).
-        // 2. If it's the Default Source, we enforce strict M3U8 filtering to avoid ads/junk.
+        // 1. If it's a Custom Source (user added), we TRUST it. Show everything.
+        // 2. If it's the Default Source, we enforce strict M3U8 filtering.
         const isM3u8Code = code.toLowerCase().includes('m3u8');
         const isM3u8Content = urlStr.includes('.m3u8');
         
@@ -431,21 +491,15 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
     const result: any = { doubanId: String(targetId) };
 
     // Helper to get text from #info
-    // This allows extracting "Director", "Writer", "Cast" (with / separation)
     const getInfoField = (label: string): string => {
          const plSpan = Array.from(doc.querySelectorAll('#info span.pl')).find(el => el.textContent?.includes(label));
          if (!plSpan) return '';
          
-         // Sometimes the structure is <span class="pl">Label</span>: <span class="attrs">...</span>
-         // Sometimes <span class="actor"><span class="pl">Label</span>...</span>
-         
-         // If it has a sibling 'attrs', that's usually the content list
          let next = plSpan.nextElementSibling;
          if (next && next.classList.contains('attrs')) {
              return next.textContent?.trim() || '';
          }
 
-         // Otherwise, iterate siblings until <br>
          let content = '';
          let curr = plSpan.nextSibling;
          while(curr) {
@@ -486,7 +540,7 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
     const img = doc.querySelector('#mainpic img');
     if (img) result.pic = img.getAttribute('src');
 
-    // Visual Cast List (#celebrities) - Top Actors with Images
+    // Visual Cast List (#celebrities)
     const celebrityItems = doc.querySelectorAll('#celebrities .celebrity');
     if (celebrityItems.length > 0) {
         result.actorsExtended = Array.from(celebrityItems).slice(0, 10).map(el => {

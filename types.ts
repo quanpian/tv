@@ -12,6 +12,15 @@ export interface VodItem {
   vod_score?: string; // Unified score field
   source?: 'douban' | 'cms';
   api_url?: string; // The API source where this item was found
+  vod_actor?: string; // Added for search sorting
+  vod_director?: string; // Added for search sorting
+}
+
+export interface HistoryItem extends VodItem {
+  episode_index: number;
+  episode_name: string;
+  last_updated: number;
+  source_index?: number;
 }
 
 export interface ActorItem {

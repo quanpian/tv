@@ -154,7 +154,12 @@ const transformDanmaku = (comments: any[]) => {
             time: time,
             mode: mode as any, 
             color: color,
-            border: true, 
+            border: false, 
+            style: {
+                textShadow: 'rgb(0, 0, 0) 1px 0px 1px, rgb(0, 0, 0) 0px 1px 1px, rgb(0, 0, 0) 0px -1px 1px, rgb(0, 0, 0) -1px 0px 1px',
+                fontFamily: 'SimHei, "Microsoft YaHei", sans-serif',
+                fontWeight: 'bold',
+            },
         };
     }).filter((item): item is NonNullable<typeof item> => item !== null);
 };
@@ -366,7 +371,7 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
                       return data;
                   },
                   speed: 10,
-                  opacity: 0.8,
+                  opacity: 1, 
                   fontSize: 25,
                   color: '#FFFFFF',
                   mode: 0,
