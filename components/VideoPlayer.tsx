@@ -89,17 +89,29 @@ const API_COMMENT = `${DANMAKU_API_BASE}/api/v2/comment`;
 // GLOBAL CUSTOM PROXY
 const GLOBAL_PROXY = 'https://daili.laidd.de5.net/?url=';
 
-// Robust Fetch with Timeout and Custom Proxy
-const robustFetch = async (url: string, options: RequestInit = {}) => {
-    // Force usage of custom global proxy
+// Robust Fetch: Tries direct first, then proxy
+const robustFetch = async (url: string, forceProxy = false) => {
+    // 1. Try Direct Fetch (Fastest) if not forced to proxy
+    if (!forceProxy) {
+        try {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), 3000); // 3s fast timeout
+            const response = await fetch(url, { signal: controller.signal });
+            clearTimeout(id);
+            if (response.ok) return response;
+        } catch (e) {
+            // Direct failed, fall through to proxy
+        }
+    }
+
+    // 2. Fallback to Proxy
     const proxyUrl = `${GLOBAL_PROXY}${encodeURIComponent(url)}`;
-    
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), 15000);
     try {
-        const response = await fetch(proxyUrl, { ...options, signal: controller.signal });
+        const response = await fetch(proxyUrl, { signal: controller.signal });
         clearTimeout(id);
-        if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+        if (!response.ok) throw new Error(`Proxy Fetch failed: ${response.status}`);
         return response;
     } catch (error) {
         clearTimeout(id);
@@ -120,9 +132,9 @@ const transformDanmaku = (comments: any[]) => {
         if (isNaN(time)) return null;
 
         const modeId = parseInt(parts[1]) || 1;
-        let mode = 0; 
-        if (modeId === 4) mode = 2; // Bottom
-        else if (modeId === 5) mode = 1; // Top
+        let mode = 0; // 0: scroll, 1: top, 2: bottom
+        if (modeId === 4) mode = 2; // Dandan Bottom -> Artplayer Bottom
+        else if (modeId === 5) mode = 1; // Dandan Top -> Artplayer Top
         
         const colorInt = parseInt(parts[2]);
         let color = '#FFFFFF';
@@ -141,7 +153,7 @@ const transformDanmaku = (comments: any[]) => {
             time: time,
             mode: mode as any, 
             color: color,
-            border: false, 
+            border: true, 
         };
     }).filter((item): item is NonNullable<typeof item> => item !== null);
 };
@@ -149,72 +161,73 @@ const transformDanmaku = (comments: any[]) => {
 const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: string) => {
     if (!title) return [];
     
+    // Improved Cleaning Logic: Keep numbers, remove garbage
     const cleanTitle = title
-        .replace(/第\s*\d+\s*季|Season\s*\d+|S\d+/gi, '')
-        .replace(/\(\d{4}\)/g, '')
-        .replace(/电视剧|动漫|综艺|movie|tv/gi, '')
+        .replace(/(\s*第\s*\d+\s*季)|(\s*[Ss]eason\s*\d+)/gi, ' ') // Remove Season markers gently
+        .replace(/[\(\[\{【](?!Part|Vol|Ep).*?[\)\]\}】]/gi, '') // Remove content in brackets unless it's Part/Vol
+        .replace(/电视剧|动漫|综艺|movie|tv|4k|1080p|hd|国语|完整版/gi, '')
         .trim();
     
     const episodeNum = episodeIndex + 1;
+    console.log(`Searching Danmaku for: [${cleanTitle}] Ep: ${episodeNum}`);
 
     try {
         const searchUrl = `${API_SEARCH_EPISODES}?anime=${encodeURIComponent(cleanTitle)}`;
-        const res = await robustFetch(searchUrl);
+        // Use direct fetch first for API, often faster and works if CORS is allowed
+        const res = await robustFetch(searchUrl, false); 
         const data = await res.json();
         
         let episodeId: number | null = null;
 
         if (data.animes && Array.isArray(data.animes)) {
+            // Scoring system to find best anime match
             const scoredAnimes = data.animes.map((anime: any) => {
                 let score = 0;
                 const animeTitle = (anime.animeTitle || '').toLowerCase();
                 const targetTitle = cleanTitle.toLowerCase();
 
                 if (animeTitle === targetTitle) score += 100;
-                else if (animeTitle.includes(targetTitle)) score += 50;
-                
+                else if (animeTitle.includes(targetTitle)) score += 60;
+                else if (targetTitle.includes(animeTitle)) score += 50;
+
+                // Penalty/Bonus for "Movie" vs "TV" matching
+                const isTargetMovie = title.includes('剧场版') || title.includes('电影');
+                const isAnimeMovie = anime.type === 'movie' || animeTitle.includes('剧场版');
+                if (isTargetMovie === isAnimeMovie) score += 30;
+
                 return { ...anime, score };
             }).sort((a: any, b: any) => b.score - a.score);
 
-            for (const anime of scoredAnimes) {
-                if (!anime.episodes || anime.episodes.length === 0) continue;
-
-                const regexes = [
-                    /(?:第|EP|E|Vol\.?|Episode)\s*0*(\d+)/i,
-                    /^\s*0*(\d+)\s*$/,
-                    /\s+0*(\d+)\s+/, 
+            const bestAnime = scoredAnimes[0];
+            
+            if (bestAnime && bestAnime.score > 40) {
+                 // Try exact title matching first
+                 const regexes = [
+                    new RegExp(`(?:第|EP|E|Vol\\.?|Episode)\\s*0*${episodeNum}(?:\\s|$)`, 'i'),
+                    new RegExp(`^\\s*0*${episodeNum}\\s*$`),
+                    new RegExp(`\\s+0*${episodeNum}\\s+`), 
                 ];
 
-                const targetEp = anime.episodes.find((ep: any) => {
+                const targetEp = bestAnime.episodes.find((ep: any) => {
                     let t = ep.episodeTitle || '';
-                    t = t.replace(/[【\[].*?[】\]]/g, '').trim();
-
-                    for (const r of regexes) {
-                        const m = t.match(r);
-                        if (m && parseInt(m[1], 10) === episodeNum) {
-                            return true;
-                        }
-                    }
-                    return false;
+                    t = t.replace(/[【\[].*?[】\]]/g, '').trim(); // Clean episode title
+                    return regexes.some(r => r.test(t));
                 });
 
                 if (targetEp) {
                     episodeId = targetEp.episodeId;
-                    break; 
-                }
-            }
-
-            if (!episodeId && scoredAnimes.length > 0) {
-                const bestAnime = scoredAnimes[0];
-                if (bestAnime.episodes && bestAnime.episodes.length > episodeIndex && bestAnime.score > 50) {
-                    episodeId = bestAnime.episodes[episodeIndex].episodeId;
+                } else {
+                    // Fallback to index if available and reasonably safe
+                    if (bestAnime.episodes.length > episodeIndex) {
+                        episodeId = bestAnime.episodes[episodeIndex].episodeId;
+                    }
                 }
             }
         }
 
         if (episodeId) {
             const commentUrl = `${API_COMMENT}/${episodeId}?withRelated=true&format=json`;
-            const cRes = await robustFetch(commentUrl);
+            const cRes = await robustFetch(commentUrl, false);
             const cData = await cRes.json();
             
             const rawComments = cData.comments || cData;
@@ -224,7 +237,7 @@ const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: strin
             }
         }
     } catch (e) {
-        // console.warn('Danmaku fetch failed', e);
+        console.warn('Danmaku fetch failed', e);
     }
     
     return [];
@@ -318,8 +331,12 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
               artplayerPluginDanmuku({
                   danmuku: async () => {
                       const data = await fetchDanmaku(title || '', episodeIndex, url);
-                      if (data.length > 0 && artRef.current) {
-                          artRef.current.notice.show = `弹幕加载成功: ${data.length}条`;
+                      if (artRef.current) {
+                           if (data.length > 0) {
+                               artRef.current.notice.show = `弹幕加载成功: ${data.length}条`;
+                           } else {
+                               // artRef.current.notice.show = '未找到匹配弹幕';
+                           }
                       }
                       return data;
                   },
