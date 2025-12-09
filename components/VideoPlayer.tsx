@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import Artplayer from 'artplayer';
 import artplayerPluginDanmuku from 'artplayer-plugin-danmuku';
@@ -13,6 +14,7 @@ interface VideoPlayerProps {
   title?: string;
   episodeIndex?: number;
   doubanId?: string;
+  className?: string;
 }
 
 // Icons for settings
@@ -235,7 +237,7 @@ const formatTime = (seconds: number) => {
 };
 
 const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
-  const { url, poster, autoplay = true, onEnded, onNext, title, episodeIndex = 0, doubanId } = props;
+  const { url, poster, autoplay = true, onEnded, onNext, title, episodeIndex = 0, doubanId, className } = props;
   const artRef = useRef<Artplayer | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -512,7 +514,7 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
   }, [url, autoplay, poster, title, episodeIndex]); 
 
   return (
-      <div className="w-full aspect-video lg:aspect-auto lg:h-[500px] bg-black lg:rounded-xl overflow-hidden shadow-2xl border border-glass-border ring-1 ring-white/10 group relative z-0">
+      <div className={`w-full aspect-video lg:aspect-auto lg:h-full bg-black group relative z-0 ${className || ''}`}>
           <style>{`
             .art-danmuku-control, .art-control-danmuku { display: none !important; }
             @media (max-width: 768px) {
