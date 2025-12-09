@@ -296,8 +296,7 @@ export const parseAllSources = (detail: VodDetail): PlaySource[] => {
     const fromArray = detail.vod_play_from.split('$$$');
     const urlArray = detail.vod_play_url.split('$$$');
     
-    // Resolve Source Name from API URL
-    // This ensures we use the name the user provided in settings
+    // Resolve Source Name from Settings configuration
     let sourceName = '默认源';
     if (detail.api_url) {
         const sources = getVodSources();
@@ -315,7 +314,7 @@ export const parseAllSources = (detail: VodDetail): PlaySource[] => {
 
         // FILTER: Keep M3U8 sources.
         // We accept if the code explicitly mentions m3u8 OR if the content URL contains .m3u8
-        // This fixes the issue where some custom APIs might name the source "1080p" or "official" without "m3u8" in the tag.
+        // We also check for '.m3u8' inside the urlStr to catch cases where the code is generic like '1080p'
         const isM3u8Code = code.toLowerCase().includes('m3u8');
         const isM3u8Content = urlStr.includes('.m3u8');
         
@@ -328,9 +327,7 @@ export const parseAllSources = (detail: VodDetail): PlaySource[] => {
             let title = parts.length > 1 ? parts[0] : `第 ${epIdx + 1} 集`;
             const url = parts.length > 1 ? parts[1] : parts[0];
             
-            // Clean up title:
-            // 1. If title matches source code/name/m3u8/mp4
-            // 2. If title looks like a URL (starts with http) - Fix for APIs that return only URLs
+            // Clean up title if it's junk
             if (
                 title === code || 
                 title.toLowerCase() === 'm3u8' || 
@@ -349,13 +346,9 @@ export const parseAllSources = (detail: VodDetail): PlaySource[] => {
         });
         
         if (episodes.length > 0) {
-            // Check for duplicates (e.g. if one API returns multiple m3u8 playlists)
+            // If the same source name exists (e.g. from same API providing multiple m3u8 lists), append code
             let finalName = sourceName;
-            const isDuplicate = sources.some(s => s.name === sourceName);
-            
-            // If the same source name exists (e.g. from same API), append the code to distinguish
-            // But if it's the first time we see this source name, we keep it clean as the user defined.
-            if (isDuplicate) {
+            if (sources.some(s => s.name === sourceName)) {
                  finalName = `${sourceName} (${code})`;
             }
 
@@ -382,7 +375,7 @@ export const enrichVodDetail = async (detail: VodDetail): Promise<Partial<VodDet
             if (doubanData.pic) updates.vod_pic = doubanData.pic;
             if (doubanData.content) updates.vod_content = doubanData.content;
             
-            // Comprehensive Details
+            // Comprehensive Details - All fields requested
             if (doubanData.director) updates.vod_director = doubanData.director;
             if (doubanData.actor) updates.vod_actor = doubanData.actor;
             if (doubanData.writer) updates.vod_writer = doubanData.writer;
@@ -408,7 +401,6 @@ export const enrichVodDetail = async (detail: VodDetail): Promise<Partial<VodDet
 export const fetchDoubanData = async (keyword: string, doubanId?: string | number): Promise<any | null> => {
   try {
     let targetId = doubanId;
-    // If no ID provided, or ID is invalid, search for it
     if (!targetId || targetId === '0' || targetId === 0) {
         const searchUrl = `https://movie.douban.com/j/subject_suggest?q=${encodeURIComponent(keyword)}`;
         const data = await fetchWithProxy(searchUrl);
@@ -427,65 +419,46 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
 
     const result: any = { doubanId: String(targetId) };
 
-    // 1. Try JSON-LD (Best Source for basic info)
-    const script = doc.querySelector('script[type="application/ld+json"]');
-    if (script) {
-        try {
-            const ld = JSON.parse(script.textContent || '{}');
-            result.name = ld.name;
-            result.pic = ld.image;
-            result.score = ld.aggregateRating?.ratingValue;
-            result.director = Array.isArray(ld.director) ? ld.director.map((d:any) => d.name).join(' / ') : ld.director?.name;
-            result.actor = Array.isArray(ld.actor) ? ld.actor.map((a:any) => a.name).join(' / ') : ld.actor?.name;
-            result.pubdate = ld.datePublished;
-            result.duration = ld.duration ? ld.duration.replace('PT', '').replace('H', '小时').replace('M', '分') : '';
-        } catch(e) {}
-    }
+    // Helper to get text from #info
+    // This allows extracting "Director", "Writer", "Cast" (with / separation)
+    const getInfoField = (label: string): string => {
+         const plSpan = Array.from(doc.querySelectorAll('#info span.pl')).find(el => el.textContent?.includes(label));
+         if (!plSpan) return '';
+         
+         // Sometimes the structure is <span class="pl">Label</span>: <span class="attrs">...</span>
+         // Sometimes <span class="actor"><span class="pl">Label</span>...</span>
+         
+         // If it has a sibling 'attrs', that's usually the content list
+         let next = plSpan.nextElementSibling;
+         if (next && next.classList.contains('attrs')) {
+             return next.textContent?.trim() || '';
+         }
 
-    // 2. Fallback/Supplement from DOM (#info block)
-    // This is crucial for fields often missing in JSON-LD like Writer, Alias, IMDb, Region
-    const info = doc.getElementById('info');
-    if (info) {
-        const getField = (label: string) => {
-             // Find the label span (e.g. <span class="pl">导演</span>)
-             const labelEl = Array.from(info.querySelectorAll('span.pl')).find(el => el.textContent?.includes(label));
-             if (labelEl) {
-                 // The value is usually in the text node immediately following, or in sibling elements until the next <br> or <span.pl>
-                 let content = '';
-                 let curr = labelEl.nextSibling;
-                 
-                 while(curr) {
-                     // Stop if we hit the next label (span.pl) or a break
-                     if (curr.nodeName === 'BR') break;
-                     if (curr.nodeType === 1 && (curr as Element).classList.contains('pl')) break;
-                     
-                     content += curr.textContent;
-                     curr = curr.nextSibling;
-                 }
-                 return content.replace(/:/g, '').trim();
-             }
-             return '';
-        };
+         // Otherwise, iterate siblings until <br>
+         let content = '';
+         let curr = plSpan.nextSibling;
+         while(curr) {
+             if (curr.nodeName === 'BR') break;
+             if (curr.nodeType === 1 && (curr as Element).classList.contains('pl')) break; // Next label
+             content += curr.textContent;
+             curr = curr.nextSibling;
+         }
+         return content.replace(/:/g, '').trim();
+    };
 
-        if (!result.director) result.director = getField('导演');
-        if (!result.writer) result.writer = getField('编剧');
-        if (!result.actor) result.actor = getField('主演');
-        if (!result.type_name) result.type_name = getField('类型');
-        
-        // These fields are almost always in #info
-        result.area = getField('制片国家/地区');
-        result.lang = getField('语言');
-        result.alias = getField('又名');
-        result.imdb = getField('IMDb');
-        result.episodeCount = getField('集数');
-        
-        const duration = getField('单集片长') || getField('片长');
-        if (!result.duration && duration) result.duration = duration;
-        
-        if (!result.pubdate) result.pubdate = getField('上映日期') || getField('首播');
-    }
-    
-    // 3. Synopsis (Robust selection)
+    result.director = getInfoField('导演');
+    result.writer = getInfoField('编剧');
+    result.actor = getInfoField('主演');
+    result.type_name = getInfoField('类型');
+    result.area = getInfoField('制片国家/地区');
+    result.lang = getInfoField('语言');
+    result.pubdate = getInfoField('首播') || getInfoField('上映日期');
+    result.episodeCount = getInfoField('集数');
+    result.duration = getInfoField('单集片长') || getInfoField('片长');
+    result.alias = getInfoField('又名');
+    result.imdb = getInfoField('IMDb');
+
+    // Synopsis
     const summary = doc.querySelector('span[property="v:summary"]');
     const hiddenSummary = doc.querySelector('span.all.hidden');
     if (hiddenSummary) {
@@ -494,20 +467,15 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
         result.content = summary.textContent?.trim().replace(/<br\s*\/?>/gi, '\n').replace(/\s+/g, ' ');
     }
 
-    // 4. Score Fallback
-    if (!result.score) {
-        const rating = doc.querySelector('strong[property="v:average"]');
-        if (rating) result.score = rating.textContent?.trim();
-    }
-    
-    // 5. Picture Fallback
-    if (!result.pic) {
-        const img = doc.querySelector('#mainpic img');
-        if (img) result.pic = img.getAttribute('src');
-    }
+    // Score
+    const rating = doc.querySelector('strong[property="v:average"]');
+    if (rating) result.score = rating.textContent?.trim();
 
-    // 6. Cast Images (Visual List) - #celebrities
-    // This is the "Main Actors" list with images
+    // Picture
+    const img = doc.querySelector('#mainpic img');
+    if (img) result.pic = img.getAttribute('src');
+
+    // Visual Cast List (#celebrities) - Top Actors with Images
     const celebrityItems = doc.querySelectorAll('#celebrities .celebrity');
     if (celebrityItems.length > 0) {
         result.actorsExtended = Array.from(celebrityItems).slice(0, 10).map(el => {
@@ -516,7 +484,6 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
             let pic = el.querySelector('.avatar')?.getAttribute('style')?.match(/url\((.*?)\)/)?.[1] || '';
             if (!pic) pic = el.querySelector('img')?.getAttribute('src') || '';
             
-            // Clean up URLs
             if (pic && !pic.startsWith('http')) {
                 if (pic.startsWith('//')) pic = 'https:' + pic;
             }
@@ -525,8 +492,7 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
         }).filter(a => a.name);
     }
 
-    // 7. Recommendations - #recommendations
-    // "Guess You Like"
+    // Recommendations
     const recItems = doc.querySelectorAll('#recommendations dl, .recommendations-bd dl');
     if (recItems.length > 0) {
         result.recs = Array.from(recItems).slice(0, 10).map(el => {

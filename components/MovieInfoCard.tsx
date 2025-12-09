@@ -1,5 +1,4 @@
 
-
 import React, { useState } from 'react';
 import { VodDetail } from '../types';
 import ImageWithFallback from './ImageWithFallback';
@@ -17,12 +16,12 @@ const MovieInfoCard: React.FC<MovieInfoCardProps> = ({ movie, onSearch }) => {
   const displayContent = expanded ? rawContent : rawContent.slice(0, 150) + (isLongContent ? '...' : '');
 
   // Helper for metadata grid items
-  const MetaItem = ({ label, value }: { label: string, value?: string }) => {
+  const MetaItem = ({ label, value, fullWidth = false }: { label: string, value?: string, fullWidth?: boolean }) => {
       if (!value) return null;
       return (
-          <div className="flex flex-col gap-1">
+          <div className={`flex flex-col gap-1 ${fullWidth ? 'col-span-2 md:col-span-2' : ''}`}>
               <span className="text-gray-500 text-[10px] md:text-xs font-bold uppercase tracking-wider">{label}</span>
-              <span className="text-gray-200 text-xs md:text-sm font-medium leading-snug">{value}</span>
+              <span className="text-gray-200 text-xs md:text-sm font-medium leading-relaxed">{value}</span>
           </div>
       );
   };
@@ -78,14 +77,30 @@ const MovieInfoCard: React.FC<MovieInfoCardProps> = ({ movie, onSearch }) => {
                       </div>
 
                       {/* Detailed Metadata Grid */}
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 md:gap-x-8 gap-y-3 md:gap-y-4 mb-4 md:mb-6 bg-white/5 p-3 md:p-4 rounded-xl border border-white/5">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 md:gap-x-8 gap-y-4 mb-4 md:mb-6 bg-white/5 p-4 rounded-xl border border-white/5">
+                          {/* Row 1 */}
                           <MetaItem label="导演" value={movie.vod_director} />
                           <MetaItem label="编剧" value={movie.vod_writer} />
-                          <MetaItem label="主演" value={movie.vod_actor} />
+                          
+                          {/* Main Actor takes full width or 2 cols on desktop */}
+                          <div className="col-span-2 md:col-span-2 row-span-2">
+                             <MetaItem label="主演" value={movie.vod_actor} />
+                          </div>
+
+                          {/* Row 2 */}
+                          <MetaItem label="类型" value={movie.type_name} />
+                          <MetaItem label="制片国家/地区" value={movie.vod_area} />
+
+                          {/* Row 3 */}
+                          <MetaItem label="语言" value={movie.vod_lang} />
                           <MetaItem label="首播" value={movie.vod_pubdate} />
                           <MetaItem label="集数" value={movie.vod_episode_count} />
                           <MetaItem label="单集片长" value={movie.vod_duration} />
-                          <MetaItem label="又名" value={movie.vod_alias} />
+                          
+                          {/* Row 4 */}
+                          <div className="col-span-2 md:col-span-2">
+                             <MetaItem label="又名" value={movie.vod_alias} />
+                          </div>
                           <MetaItem label="IMDb" value={movie.vod_imdb} />
                       </div>
 
@@ -110,7 +125,7 @@ const MovieInfoCard: React.FC<MovieInfoCardProps> = ({ movie, onSearch }) => {
               {/* Extended Section: Cast - Mobile Optimized Scrolling */}
               {movie.vod_actors_extended && movie.vod_actors_extended.length > 0 && (
                   <div className="border-t border-white/10 pt-4 md:pt-6">
-                      <h3 className="text-base md:text-lg font-bold text-white mb-3 md:mb-4">主演阵容</h3>
+                      <h3 className="text-base md:text-lg font-bold text-white mb-3 md:mb-4">主演阵容 (Visual)</h3>
                       <div className="-mx-4 md:mx-0 px-4 md:px-0">
                           <div className="flex gap-4 md:gap-6 overflow-x-auto pb-4 no-scrollbar w-full">
                               {movie.vod_actors_extended.map((actor, idx) => (
