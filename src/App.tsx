@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getHomeSections, searchCms, getAggregatedSearch, getAggregatedMovieDetail, parseAllSources, enrichVodDetail, fetchDoubanData, fetchCategoryItems, getHistory, addToHistory, removeFromHistory, fetchPersonDetail, initVodSources } from './services/vodService';
@@ -171,6 +170,7 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
                         </button>
                         
                         <button 
+                            onClick={() => onPlay(activeItem)}
                             className="bg-white/10 text-white hover:bg-white/20 border border-white/10 backdrop-blur-md text-xs md:text-base font-bold px-4 py-1.5 md:px-8 md:py-3 rounded-full flex items-center gap-1 md:gap-2 transition-all hover:scale-105 whitespace-nowrap"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 md:w-5 md:h-5">
@@ -491,7 +491,6 @@ const App: React.FC = () => {
           const director = currentMovie.vod_director || '';
           const type = currentMovie.type_name || '影视';
           
-          // Enhanced SEO Logic
           let titleSuffix = '';
           const isMovie = type === '电影' || episodes.length <= 1;
 
