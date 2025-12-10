@@ -263,7 +263,6 @@ docker run -d -p 8080:80 --name cinestream cinestream-ai
 npm install
 
 # 启动本地开发服务器
-
 npm run dev
 
 # 打包生产环境代码
@@ -272,5 +271,3 @@ npm run build
 
 ### 📄 许可证
 MIT License
-
-源：https://aistudio.google.com/apps/drive/18AErm3q4nDJg8bIUiCXSoqX85XSX4YIy?showAssistant=true&showCode=true

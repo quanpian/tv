@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import React, { useEffect, useRef, forwardRef, useImperativeHandle, useMemo } from 'react';
 import Artplayer from 'artplayer';
 import artplayerPluginDanmuku from 'artplayer-plugin-danmuku';
 import Hls from 'hls.js';
@@ -14,6 +14,7 @@ interface VideoPlayerProps {
   title?: string;
   episodeIndex?: number;
   doubanId?: string;
+  vodId?: string | number;
   className?: string;
 }
 
@@ -256,12 +257,19 @@ const formatTime = (seconds: number) => {
 };
 
 const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
-  const { url, poster, autoplay = true, onEnded, onNext, title, episodeIndex = 0, doubanId, className } = props;
+  const { url, poster, autoplay = true, onEnded, onNext, title, episodeIndex = 0, doubanId, vodId, className } = props;
   const artRef = useRef<Artplayer | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
   const latestOnEnded = useRef(onEnded);
   const latestOnNext = useRef(onNext);
+
+  // Generate a progress key that is consistent across different sources for the same content
+  const progressKey = useMemo(() => {
+      return (vodId && episodeIndex !== undefined) 
+        ? `cine_progress_${vodId}_${episodeIndex}` 
+        : `cine_progress_${url}`;
+  }, [vodId, episodeIndex, url]);
 
   useEffect(() => {
     latestOnEnded.current = onEnded;
@@ -522,7 +530,7 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
       });
       
       art.on('ready', () => {
-          const progressKey = `cine_progress_${url}`;
+          // Restore progress from shared key
           const savedTimeStr = localStorage.getItem(progressKey);
           if (savedTimeStr) {
               const savedTime = parseFloat(savedTimeStr);
@@ -537,7 +545,7 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
 
       art.on('video:timeupdate', function() {
           if (art.currentTime > 0) {
-              localStorage.setItem(`cine_progress_${url}`, String(art.currentTime));
+              localStorage.setItem(progressKey, String(art.currentTime));
           }
           const currentSkipHead = parseInt(localStorage.getItem('art_skip_head') || String(DEFAULT_SKIP_HEAD));
           const currentSkipTail = parseInt(localStorage.getItem('art_skip_tail') || String(DEFAULT_SKIP_TAIL));
@@ -566,13 +574,20 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
       art.on('seek', () => { isSkippingTail = false; });
       art.on('restart', () => { isSkippingTail = false; hasSkippedHead = false; });
       art.on('video:ended', () => {
-         localStorage.removeItem(`cine_progress_${url}`);
+         localStorage.removeItem(progressKey);
          if (autoNext && latestOnNext.current) latestOnNext.current();
       });
 
       return () => {
           if (artRef.current) {
-              // Critical Fix: Explicitly close Mini/PiP/Fullscreen to prevent residuals on unmount
+              // Critical Fix: Save progress exactly before destruction (e.g. source switching)
+              try {
+                  const currentTime = artRef.current.currentTime;
+                  if (currentTime > 0) {
+                       localStorage.setItem(progressKey, String(currentTime));
+                  }
+              } catch(e) {}
+
               try {
                   if (artRef.current.mini) artRef.current.mini = false;
                   if (artRef.current.pip) artRef.current.pip = false;
@@ -587,7 +602,7 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
               }
           }
       };
-  }, [url, autoplay, poster, title, episodeIndex]); 
+  }, [url, autoplay, poster, title, episodeIndex, vodId]); 
 
   return (
       <div className={`w-full aspect-video lg:aspect-auto lg:h-full bg-black group relative z-0 ${className || ''}`}>

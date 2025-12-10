@@ -1,8 +1,7 @@
 
-
 import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom'; // Import Router hooks
-import { getHomeSections, searchDouban, searchCms, getAggregatedMovieDetail, parseAllSources, enrichVodDetail, fetchDoubanData, fetchCategoryItems, getHistory, addToHistory, removeFromHistory, fetchPersonDetail } from './services/vodService';
+import { getHomeSections, searchDouban, searchCms, getAggregatedSearch, getAggregatedMovieDetail, parseAllSources, enrichVodDetail, fetchDoubanData, fetchCategoryItems, getHistory, addToHistory, removeFromHistory, fetchPersonDetail } from './services/vodService';
 import MovieInfoCard from './components/MovieInfoCard';
 import ImageWithFallback from './components/ImageWithFallback';
 import { VodItem, VodDetail, Episode, PlaySource, HistoryItem, PersonDetail } from './types';
@@ -16,7 +15,7 @@ const SettingsModal = lazy(() => import('./components/SettingsModal'));
 const NavIcons = {
     Home: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>,
     Search: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>,
-    Movie: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h1.5C5.496 19.5 6 18.996 6 18.375m-3.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-1.5A1.125 1.125 0 0118 18.375M20.625 4.5H3.375m17.25 0c.621 0 1.125.504 1.125 1.125M20.625 4.5h-1.5C18.504 4.5 18 5.004 18 5.625m3.75 0v1.5c0 .621-.504 1.125-1.125 1.125M3.375 4.5c-.621 0-1.125.504-1.125 1.125M3.375 4.5h1.5C5.496 4.5 6 5.004 6 5.625m-3.75 0v1.5c0 .621.504 1.125 1.125 1.125m0 0h1.5m-1.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m1.5-3.75C5.496 8.25 6 7.746 6 7.125v-1.5M4.875 8.25C5.496 8.25 6 8.754 6 9.375v1.5m0-5.25v5.25m0-5.25C6 5.004 5.496 4.5 4.875 4.5M6 9.375c0 .621.504 1.125 1.125 1.125h1.5c.621 0 1.125-.504 1.125-1.125V8.625c0-.621-.504-1.125-1.125-1.125h-1.5M6 9.375v5.25m0-5.25C6 8.754 5.496 8.25 4.875 8.25M6 14.625c0 .621.504 1.125 1.125 1.125h1.5c.621 0 1.125-.504 1.125-1.125v-2.25c0-.621-.504-1.125-1.125-1.125h-1.5M6 14.625v3.75m0-3.75C6 14.004 5.496 13.5 4.875 13.5M6 18.375c0 .621.504 1.125 1.125 1.125h1.5c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-1.5" /></svg>,
+    Movie: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h1.5C5.496 19.5 6 18.996 6 18.375m-3.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125 1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-1.5A1.125 1.125 0 0118 18.375M20.625 4.5H3.375m17.25 0c.621 0 1.125.504 1.125 1.125M20.625 4.5h-1.5C18.504 4.5 18 5.004 18 5.625m3.75 0v1.5c0 .621-.504 1.125-1.125 1.125M3.375 4.5c-.621 0-1.125.504-1.125 1.125M3.375 4.5h1.5C5.496 4.5 6 5.004 6 5.625m-3.75 0v1.5c0 .621.504 1.125 1.125 1.125m0 0h1.5m-1.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m1.5-3.75C5.496 8.25 6 7.746 6 7.125v-1.5M4.875 8.25C5.496 8.25 6 8.754 6 9.375v1.5m0-5.25v5.25m0-5.25C6 5.004 5.496 4.5 4.875 4.5M6 9.375c0 .621.504 1.125 1.125 1.125h1.5c.621 0 1.125-.504 1.125-1.125V8.625c0-.621-.504-1.125-1.125-1.125h-1.5M6 9.375v5.25m0-5.25C6 8.754 5.496 8.25 4.875 8.25M6 14.625c0 .621.504 1.125 1.125 1.125h1.5c.621 0 1.125-.504 1.125-1.125v-2.25c0-.621-.504-1.125-1.125-1.125h-1.5M6 14.625v3.75m0-3.75C6 14.004 5.496 13.5 4.875 13.5M6 18.375c0 .621.504 1.125 1.125 1.125h1.5c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-1.5" /></svg>,
     Series: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 20.25h12m-7.5-3v3m3-3v3m-10.125-3h17.25c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125z" /></svg>,
     Anime: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75z" /></svg>,
     Variety: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>,
@@ -784,10 +783,10 @@ const App: React.FC = () => {
           navigate(TAB_TO_URL['search']);
       }
       try {
-          // SEARCH DOUBAN FOR RESULTS LIST
-          const results = await searchDouban(query);
+          // AGGREGATED SEARCH: Query Douban + All CMS Sites
+          const results = await getAggregatedSearch(query);
           
-          // Check if search returned a celebrity
+          // Check if search returned a celebrity (from Douban results)
           const celebrity = results.find(r => r.type_name === 'celebrity');
           
           if (celebrity) {
@@ -926,7 +925,8 @@ const App: React.FC = () => {
                       }
                   });
               } else {
-                 // No sources
+                 // No valid M3U8 sources found after strict filtering
+                 alert('未找到可播放的M3U8资源 (No playable M3U8 sources found)');
               }
           }
       } catch (error) {
@@ -1044,6 +1044,7 @@ const App: React.FC = () => {
                                       title={currentMovie.vod_name}
                                       episodeIndex={currentEpisodeIndex}
                                       doubanId={currentMovie.vod_douban_id}
+                                      vodId={currentMovie.vod_id}
                                       onEnded={handleEpisodeEnd}
                                       onNext={handleNextEpisode}
                                   />
@@ -1064,106 +1065,132 @@ const App: React.FC = () => {
                                   <div className="flex justify-end absolute -top-10 right-0 z-20">
                                       <button 
                                         onClick={() => setShowSidePanel(false)}
-                                        className="bg-[#1a1f2e]/80 hover:bg-brand hover:text-black text-gray-300 text-xs px-4 py-1.5 rounded-full flex items-center gap-1.5 border border-white/10 shadow-lg transition-all duration-300 backdrop-blur-md"
+                                        className="bg-[#121620] hover:bg-[#1a202e] text-gray-300 hover:text-white px-3 py-1.5 rounded-full text-xs flex items-center gap-1.5 border border-white/10 shadow-lg transition-all"
                                       >
-                                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
                                           隐藏
                                       </button>
                                   </div>
 
-                                  <div className="w-full bg-[#1a1f2e] border border-white/5 rounded-xl overflow-hidden flex flex-col min-h-[300px] lg:h-[500px] shadow-2xl mt-0">
-                                      {/* Tabs Header */}
-                                      <div className="flex items-center border-b border-white/5 bg-[#141824]">
+                                  <div className="bg-[#121620] border border-white/5 rounded-xl overflow-hidden shadow-xl flex flex-col h-[500px]">
+                                      {/* Tabs */}
+                                      <div className="flex border-b border-white/5">
                                           <button 
-                                            onClick={() => setSidePanelTab('episodes')}
-                                            className={`flex-1 py-3 text-sm font-bold transition-colors relative ${sidePanelTab === 'episodes' ? 'text-brand' : 'text-gray-400 hover:text-gray-200'}`}
+                                              onClick={() => setSidePanelTab('episodes')}
+                                              className={`flex-1 py-3 text-sm font-bold transition-all relative ${sidePanelTab === 'episodes' ? 'text-white bg-white/5' : 'text-gray-500 hover:text-gray-300'}`}
                                           >
                                               选集
-                                              {sidePanelTab === 'episodes' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand rounded-t-full mx-8"></div>}
+                                              {sidePanelTab === 'episodes' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand shadow-[0_0_10px_rgba(34,197,94,0.5)]"></div>}
                                           </button>
-                                          <div className="w-px h-4 bg-white/10"></div>
                                           <button 
-                                            onClick={() => setSidePanelTab('sources')}
-                                            className={`flex-1 py-3 text-sm font-bold transition-colors relative ${sidePanelTab === 'sources' ? 'text-brand' : 'text-gray-400 hover:text-gray-200'}`}
+                                              onClick={() => setSidePanelTab('sources')}
+                                              className={`flex-1 py-3 text-sm font-bold transition-all relative ${sidePanelTab === 'sources' ? 'text-white bg-white/5' : 'text-gray-500 hover:text-gray-300'}`}
                                           >
                                               换源
-                                              {sidePanelTab === 'sources' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand rounded-t-full mx-8"></div>}
+                                              {sidePanelTab === 'sources' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand shadow-[0_0_10px_rgba(34,197,94,0.5)]"></div>}
                                           </button>
                                       </div>
 
                                       {/* Content Area */}
-                                      <div className="flex-1 overflow-hidden flex flex-col bg-[#11141d]">
+                                      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 relative bg-black/20">
                                           {sidePanelTab === 'episodes' ? (
                                               <>
-                                                  {/* Episode Range / Sort Bar */}
-                                                  <div className="flex justify-between items-center px-4 py-2 border-b border-white/5 bg-[#161b26]">
-                                                      <span className="text-xs text-gray-400 font-mono">
-                                                          {episodes.length > 0 ? `Total: ${episodes.length}` : '暂无剧集'}
+                                                  <div className="flex justify-between items-center mb-3 px-1">
+                                                      <span className="text-xs text-gray-400">
+                                                          {episodes.length} Episodes
                                                       </span>
-                                                      <button onClick={() => setIsReverseOrder(!isReverseOrder)} className="text-gray-400 hover:text-white p-1 rounded hover:bg-white/5" title="Sort Order">
-                                                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 transform rotate-90"><path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5" /></svg>
+                                                      <button 
+                                                        onClick={() => setIsReverseOrder(!isReverseOrder)}
+                                                        className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                                                        title="Sort Order"
+                                                      >
+                                                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5" /></svg>
                                                       </button>
                                                   </div>
                                                   
-                                                  {/* Tabs for Pagination (Groups of 36) */}
+                                                  {/* Pagination Tabs */}
                                                   {totalEpisodePages > 1 && (
-                                                      <div className="flex gap-2 overflow-x-auto no-scrollbar p-2 border-b border-white/5 bg-[#161b26]">
+                                                      <div className="flex flex-wrap gap-2 mb-3">
                                                           {Array.from({ length: totalEpisodePages }).map((_, idx) => (
                                                               <button
                                                                   key={idx}
                                                                   onClick={() => setCurrentEpisodePage(idx)}
-                                                                  className={`flex-shrink-0 px-3 py-1 text-xs rounded-full border transition-all whitespace-nowrap ${
+                                                                  className={`px-2 py-1 text-[10px] rounded border ${
                                                                       currentEpisodePage === idx 
-                                                                      ? 'bg-brand/20 text-brand border-brand/50 font-bold' 
-                                                                      : 'bg-[#1e2330] text-gray-400 border-transparent hover:text-white hover:bg-white/10'
+                                                                      ? 'border-brand text-brand bg-brand/10' 
+                                                                      : 'border-white/10 text-gray-400 hover:border-white/30'
                                                                   }`}
                                                               >
-                                                                  {idx * EPISODES_PER_PAGE + 1}-{Math.min((idx + 1) * EPISODES_PER_PAGE, episodes.length)}
+                                                                  {(idx * EPISODES_PER_PAGE) + 1}-{Math.min((idx + 1) * EPISODES_PER_PAGE, episodes.length)}
                                                               </button>
                                                           ))}
                                                       </div>
                                                   )}
 
-                                                  {/* Grid */}
-                                                  <div className="p-3 overflow-y-auto custom-scrollbar flex-1">
-                                                      <div className="grid grid-cols-4 gap-2">
-                                                          {displayEpisodes.map((ep) => {
-                                                              const rawTitle = ep.title.replace(/第|集/g, '').replace(/^0+/, '');
-                                                              // Determine display text: if it looks like a number, add prefix/suffix, otherwise keep raw
-                                                              const displayText = !isNaN(Number(rawTitle)) ? `第${rawTitle}集` : (ep.title || `第${ep.index + 1}集`);
+                                                  <div className="grid grid-cols-4 gap-2">
+                                                      {displayEpisodes.map((ep) => {
+                                                          // Calculate original index to highlight correct one
+                                                          const originalIndex = isReverseOrder 
+                                                              ? (episodes.length - 1) - ep.index 
+                                                              : ep.index;
+                                                            
+                                                          // Naming logic: Try to parse generic names
+                                                          let displayName = ep.title;
+                                                          if (displayName.match(/^\d+$/)) {
+                                                              displayName = displayName;
+                                                          } else if (displayName.includes('第') && displayName.includes('集')) {
+                                                              // Keep "第01集"
+                                                          } else {
+                                                              // If it's a long weird name, maybe just use number
+                                                              if (displayName.length > 8 && !isNaN(Number(originalIndex))) {
+                                                                  // Keep special titles though
+                                                              }
+                                                          }
 
-                                                              return (
-                                                              <button 
-                                                                key={ep.index} 
-                                                                onClick={() => setCurrentEpisodeIndex(ep.index)} 
-                                                                className={`h-9 text-xs rounded transition-all duration-200 border truncate font-medium relative group ${currentEpisodeIndex === ep.index ? 'bg-brand text-black border-brand shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 'bg-[#1e2330] text-gray-400 border-transparent hover:bg-[#252b3b] hover:text-white'}`}
-                                                                title={ep.title}
+                                                          return (
+                                                              <button
+                                                                  key={ep.index}
+                                                                  onClick={() => {
+                                                                      setCurrentEpisodeIndex(ep.index);
+                                                                      // Also update page if needed (though user clicked it so they are on right page)
+                                                                  }}
+                                                                  className={`h-9 rounded border text-xs font-medium transition-all truncate px-1 ${
+                                                                      currentEpisodeIndex === ep.index
+                                                                      ? 'bg-brand text-black border-brand shadow-[0_0_10px_rgba(34,197,94,0.3)] font-bold'
+                                                                      : 'bg-[#1a1f2e] text-gray-300 border-white/5 hover:border-white/30 hover:bg-white/5'
+                                                                  }`}
+                                                                  title={ep.title}
                                                               >
-                                                                  {displayText}
-                                                                  {currentEpisodeIndex === ep.index && <span className="absolute bottom-0.5 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-black rounded-full opacity-50"></span>}
+                                                                  {displayName}
                                                               </button>
-                                                          )})}
-                                                      </div>
+                                                          );
+                                                      })}
                                                   </div>
                                               </>
                                           ) : (
-                                              <div className="p-3 overflow-y-auto custom-scrollbar flex-1 space-y-2">
+                                              <div className="space-y-2">
                                                   {availableSources.map((source, idx) => (
                                                       <button
                                                           key={idx}
                                                           onClick={() => handleSourceChange(idx)}
-                                                          className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${
-                                                              currentSourceIndex === idx 
-                                                              ? 'bg-brand/10 border-brand text-brand' 
-                                                              : 'bg-[#1e2330] border-transparent text-gray-400 hover:bg-[#252b3b] hover:text-white'
+                                                          className={`w-full text-left p-3 rounded-xl border transition-all flex justify-between items-center group ${
+                                                              currentSourceIndex === idx
+                                                              ? 'bg-brand/10 border-brand text-brand shadow-[0_0_15px_rgba(34,197,94,0.1)]'
+                                                              : 'bg-[#1a1f2e] border-white/5 text-gray-300 hover:bg-white/5 hover:border-white/20'
                                                           }`}
                                                       >
-                                                          <div className="flex flex-col items-start">
-                                                              <span className="text-sm font-bold">{source.name}</span>
-                                                              <span className="text-[10px] opacity-70">{source.episodes.length} Episodes</span>
+                                                          <div>
+                                                              <div className={`font-bold text-sm mb-0.5 ${currentSourceIndex === idx ? 'text-brand' : 'text-gray-200'}`}>
+                                                                  {source.name}
+                                                              </div>
+                                                              <div className="text-[10px] text-gray-500 font-mono">
+                                                                  {source.episodes.length} Episodes
+                                                              </div>
                                                           </div>
                                                           {currentSourceIndex === idx && (
-                                                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                                                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-brand">
+                                                                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                                              </svg>
                                                           )}
                                                       </button>
                                                   ))}
@@ -1174,110 +1201,118 @@ const App: React.FC = () => {
                               </div>
                           )}
                       </div>
-                      <MovieInfoCard movie={currentMovie} onSearch={(keyword) => triggerSearch(keyword)} />
+
+                      <MovieInfoCard movie={currentMovie} onSearch={triggerSearch} />
+                      <Suspense fallback={null}>
+                          <GeminiChat currentMovie={currentMovie} />
+                      </Suspense>
                   </section>
               )}
 
-              {!currentMovie && (
-                  <div ref={resultsRef}>
-                      {(hasSearched || activeTab === 'search') ? (
-                        <>
-                            <div className="w-full max-w-3xl mx-auto mb-8 mt-2">
-                                    <form onSubmit={handleSearch} className="relative group">
-                                        <div className="absolute -inset-0.5 bg-gradient-to-r from-brand to-cyan-500 rounded-full blur opacity-30 group-hover:opacity-60 transition duration-500"></div>
-                                        <div className="relative flex items-center bg-gray-900 rounded-full p-1 ring-1 ring-white/10 shadow-2xl">
-                                            <input
-                                                type="text"
-                                                value={searchQuery}
-                                                onChange={(e) => setSearchQuery(e.target.value)}
-                                                placeholder="搜索电影、电视剧、演员..."
-                                                className="flex-1 bg-transparent px-6 py-3 text-sm md:text-base text-gray-100 placeholder-gray-500 focus:outline-none"
-                                            />
-                                            <button type="submit" disabled={loading} className="bg-brand hover:bg-brand-hover text-black font-bold py-2.5 px-6 rounded-full transition-all duration-300 flex items-center gap-2 shadow-lg disabled:opacity-70">
-                                                {loading ? '搜索中...' : '搜索'}
-                                            </button>
-                                        </div>
-                                    </form>
-                            </div>
+              {activeTab === 'home' && !currentMovie && (
+                  <>
+                      {heroItems.length > 0 && <HeroBanner items={heroItems} onPlay={handleItemClick} />}
 
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="h-6 w-1 bg-brand rounded-full shadow-[0_0_10px_rgba(34,197,94,0.5)]"></div>
-                                <h3 className="text-xl font-bold text-white tracking-wide">搜索结果 (Douban)</h3>
-                            </div>
-                            
-                            {personProfile && <PersonProfileCard person={personProfile} />}
+                      {watchHistory.length > 0 && (
+                          <HorizontalSection 
+                            title="继续观看" 
+                            items={watchHistory} 
+                            id="history" 
+                            onItemClick={handleItemClick}
+                            onItemContextMenu={handleContextMenu}
+                          />
+                      )}
 
-                            {loading && searchResults.length === 0 ? (
-                                <div className="flex justify-center py-20">
-                                    <div className="animate-spin h-10 w-10 border-4 border-brand border-t-transparent rounded-full"></div>
-                                </div>
-                            ) : (
-                                <>
-                                    {personProfile && (
-                                         <h4 className="text-lg font-bold text-gray-300 mb-4 pl-1 border-l-2 border-brand/50 flex items-center gap-2">
-                                            {personProfile.name} 的影视作品
-                                         </h4>
-                                    )}
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-6">
-                                        {searchResults.map((item) => (
-                                            <div key={item.vod_id} onClick={() => handleItemClick(item)} className="group cursor-pointer relative bg-gray-900 rounded-lg overflow-hidden aspect-[2/3] ring-1 ring-white/5 hover:ring-brand hover:shadow-[0_0_20px_rgba(34,197,94,0.15)] transition-all duration-300 hover:-translate-y-1">
-                                                <ImageWithFallback src={item.vod_pic || ''} alt={item.vod_name || 'Poster'} searchKeyword={item.vod_name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                                                <div className="absolute top-0 right-0 p-1.5 z-10">
-                                                    {item.vod_score && <span className="bg-black/60 backdrop-blur-md text-[10px] text-white px-1.5 py-0.5 rounded border border-white/10 shadow-lg">{item.vod_score}</span>}
-                                                </div>
-                                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/80 to-transparent p-2 md:p-3 pt-12">
-                                                    <h4 className="text-xs md:text-sm font-bold text-white truncate group-hover:text-brand transition-colors">{item.vod_name}</h4>
-                                                    <div className="flex justify-between items-center mt-1 text-[10px] text-gray-400 font-medium">
-                                                        <span className="bg-white/10 px-1.5 py-0.5 rounded">{item.type_name || '影视'}</span>
-                                                        <span>{item.vod_year}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </>
-                            )}
-                        </>
-                      ) : activeTab === 'home' ? (
-                          <div className="space-y-4 animate-fade-in">
-                              {isHomeEmpty ? (
-                                  <div className="flex flex-col items-center justify-center min-h-[50vh] text-center space-y-4">
-                                      <div className="text-gray-500 text-lg">暂无推荐数据，请检查网络或刷新重试</div>
-                                      <button 
-                                        onClick={fetchInitial}
-                                        className="bg-brand text-black font-bold py-2 px-6 rounded-full hover:bg-brand-hover transition-colors"
-                                      >
-                                          刷新首页
-                                      </button>
-                                  </div>
-                              ) : (
-                                <>
-                                    <HeroBanner items={heroItems} onPlay={handleItemClick} />
-                                    
-                                    {!loading && (
-                                        <>
-                                            <HorizontalSection id="history" title="继续观看" items={watchHistory} onItemClick={handleItemClick} onItemContextMenu={handleContextMenu} />
-
-                                            <HorizontalSection id="movies" title="热门电影" items={homeSections.movies} onItemClick={handleItemClick} />
-                                            <HorizontalSection id="series" title="热门剧集" items={homeSections.series} onItemClick={handleItemClick} />
-                                            <HorizontalSection id="short" title="爆款短剧" items={homeSections.shortDrama} onItemClick={handleItemClick} />
-                                            <HorizontalSection id="anime" title="新番放送" items={homeSections.anime} onItemClick={handleItemClick} />
-                                            <HorizontalSection id="variety" title="热门综艺" items={homeSections.variety} onItemClick={handleItemClick} />
-                                        </>
-                                    )}
-                                </>
-                              )}
+                      {isHomeEmpty ? (
+                          <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+                              <p className="text-lg">暂无推荐数据</p>
+                              <button onClick={() => window.location.reload()} className="mt-4 text-brand hover:underline">刷新重试</button>
                           </div>
                       ) : (
-                          <CategoryGrid category={activeTab} onItemClick={handleItemClick} />
+                          <>
+                              <HorizontalSection title="热门电影" items={homeSections.movies} id="movies" onItemClick={handleItemClick} />
+                              <HorizontalSection title="热播剧集" items={homeSections.series} id="series" onItemClick={handleItemClick} />
+                              <HorizontalSection title="热门动漫" items={homeSections.anime} id="anime" onItemClick={handleItemClick} />
+                              <HorizontalSection title="精选综艺" items={homeSections.variety} id="variety" onItemClick={handleItemClick} />
+                          </>
                       )}
+                  </>
+              )}
+
+              {(['movies', 'series', 'anime', 'variety'].includes(activeTab)) && !currentMovie && (
+                  <CategoryGrid category={activeTab} onItemClick={handleItemClick} />
+              )}
+
+              {activeTab === 'search' && !currentMovie && (
+                  <div className="animate-fade-in max-w-5xl mx-auto">
+                      <div className="flex gap-2 md:gap-4 mb-8">
+                          <div className="relative flex-1 group">
+                              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-400 group-focus-within:text-brand transition-colors"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
+                              </div>
+                              <form onSubmit={handleSearch} className="w-full">
+                                  <input 
+                                      type="text" 
+                                      value={searchQuery}
+                                      onChange={(e) => setSearchQuery(e.target.value)}
+                                      placeholder="搜索电影、剧集、综艺、动漫..." 
+                                      className="w-full bg-[#121620] border border-white/10 rounded-xl py-3 md:py-4 pl-12 pr-4 text-white focus:outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/50 shadow-xl transition-all"
+                                  />
+                              </form>
+                          </div>
+                          <button 
+                              onClick={() => triggerSearch(searchQuery)}
+                              className="bg-brand hover:bg-brand-hover text-black font-bold px-6 md:px-8 rounded-xl transition-all hover:scale-105 shadow-[0_0_15px_rgba(34,197,94,0.3)] whitespace-nowrap"
+                          >
+                              搜索
+                          </button>
+                      </div>
+
+                      <div ref={resultsRef}>
+                          {loading ? (
+                              <div className="flex justify-center py-20">
+                                  <div className="animate-spin h-10 w-10 border-4 border-brand border-t-transparent rounded-full"></div>
+                              </div>
+                          ) : (
+                              <>
+                                  {/* Person Profile Card */}
+                                  {personProfile && <PersonProfileCard person={personProfile} />}
+
+                                  {/* Results Grid */}
+                                  {searchResults.length > 0 ? (
+                                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
+                                          {searchResults.map((item) => (
+                                              <div key={item.vod_id} onClick={() => handleItemClick(item)} className="group cursor-pointer bg-gray-900 rounded-xl overflow-hidden aspect-[2/3] relative border border-white/5 hover:border-brand/50 transition-all duration-300 hover:-translate-y-1 shadow-lg hover:shadow-brand/10">
+                                                  <ImageWithFallback src={item.vod_pic || ''} alt={item.vod_name} searchKeyword={item.vod_name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                                                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/80 to-transparent p-3 pt-12">
+                                                      <h4 className="text-sm font-bold text-white truncate group-hover:text-brand transition-colors">{item.vod_name}</h4>
+                                                      <div className="flex justify-between items-center mt-1 text-xs text-gray-400">
+                                                          <span>{item.vod_year || 'N/A'}</span>
+                                                          <span className="bg-white/10 px-1.5 py-0.5 rounded text-[10px]">{item.type_name || '影视'}</span>
+                                                      </div>
+                                                  </div>
+                                              </div>
+                                          ))}
+                                      </div>
+                                  ) : (
+                                      hasSearched && (
+                                          <div className="text-center py-20 text-gray-500 flex flex-col items-center">
+                                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-16 h-16 mb-4 opacity-50"><path strokeLinecap="round" strokeLinejoin="round" d="M15.182 16.318A4.486 4.486 0 0012.016 15a4.486 4.486 0 00-3.198 1.318M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75z" /></svg>
+                                              <p>未找到相关内容，换个关键词试试？</p>
+                                          </div>
+                                      )
+                                  )}
+                              </>
+                          )}
+                      </div>
                   </div>
               )}
           </div>
-
-          <Suspense fallback={null}>
-               <GeminiChat currentMovie={currentMovie} />
-          </Suspense>
+          
+          {/* Footer */}
+          <footer className="absolute bottom-0 w-full py-6 text-center text-gray-600 text-xs border-t border-white/5 bg-black/20 backdrop-blur-sm">
+              <p>&copy; 2025 CineStream AI. All rights reserved.</p>
+          </footer>
       </div>
   );
 };

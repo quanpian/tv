@@ -1,5 +1,3 @@
-
-
 import { Episode, VodDetail, ApiResponse, ActorItem, RecommendationItem, VodItem, VodSource, PlaySource, HistoryItem, PersonDetail } from '../types';
 
 // DEFAULT SOURCE
@@ -323,6 +321,79 @@ export const searchDouban = async (keyword: string): Promise<VodItem[]> => {
     return [];
 };
 
+/**
+ * Search ALL configured CMS resources simultaneously
+ */
+const searchAllCmsResources = async (keyword: string): Promise<VodItem[]> => {
+    const sources = getVodSources().filter(s => s.active);
+    
+    // We use ac=detail to get as much info as possible (pics, remarks)
+    const params = new URLSearchParams({ ac: 'detail', wd: keyword });
+
+    const promises = sources.map(async (source) => {
+        try {
+            const url = `${source.api}?${params.toString()}`;
+            // 8s timeout for each source
+            const data = await fetchWithTimeout(url, {}, 8000).then(r => r.ok ? r.text().then(t => { try{ return JSON.parse(t) }catch(e){ return null } }) : null);
+            
+            // Check for both proxy response and direct response structure
+            let finalData = data;
+            if (!finalData) {
+                 // Try proxy if direct failed (handled by fetchWithProxy internally)
+                 finalData = await fetchWithProxy(url);
+            }
+
+            if (finalData && (finalData.list || finalData.code === 1)) {
+                const list = finalData.list || [];
+                 return list.map((item: any) => ({
+                    vod_id: item.vod_id,
+                    vod_name: item.vod_name,
+                    vod_pic: item.vod_pic,
+                    vod_remarks: item.vod_remarks,
+                    type_name: item.type_name,
+                    vod_year: item.vod_year,
+                    vod_score: item.vod_score,
+                    source: 'cms',
+                    api_url: source.api // Crucial: Link this item back to its specific source API
+                }));
+            }
+        } catch(e) {
+            // console.warn(`Search failed for ${source.name}`, e);
+        }
+        return [];
+    });
+
+    const results = await Promise.all(promises);
+    return results.flat();
+};
+
+/**
+ * AGGREGATED SEARCH: Combines Douban (Metadata) + CMS (Resources)
+ */
+export const getAggregatedSearch = async (keyword: string): Promise<VodItem[]> => {
+    // Run in parallel
+    const [doubanResults, cmsResults] = await Promise.all([
+        searchDouban(keyword),
+        searchAllCmsResources(keyword)
+    ]);
+
+    const finalResults = [...doubanResults];
+    const existingNames = new Set(doubanResults.map(i => i.vod_name));
+
+    cmsResults.forEach((item: VodItem) => {
+        // If the CMS item name is NOT already in the Douban results, add it.
+        // This ensures we show items that are unique to the resource sites (e.g. niche content, "写真").
+        // If it IS in Douban, we skip adding it to the list to prefer the high-quality Douban card.
+        // Clicking the Douban card will find this CMS source anyway.
+        if (!existingNames.has(item.vod_name)) {
+             finalResults.push(item);
+             existingNames.add(item.vod_name);
+        }
+    });
+
+    return finalResults;
+};
+
 export const fetchPersonDetail = async (id: string | number): Promise<PersonDetail | null> => {
     try {
         const url = `https://movie.douban.com/celebrity/${id}/`;
@@ -482,8 +553,6 @@ const fetchDetailFromSourceByKeyword = async (source: VodSource, keyword: string
                  exact.api_url = source.api;
                  return exact;
              }
-             // If no exact match, but results exist, maybe pick first if close enough? 
-             // For now, strict exact match to avoid showing wrong movie sources.
         }
 
         // 2. Fallback: ac=list&wd=keyword -> get ID -> ac=detail
@@ -553,14 +622,12 @@ export const parseAllSources = (input: VodDetail | VodDetail[]): PlaySource[] =>
         
         // Resolve Source Name
         let sourceName = '默认源';
-        let isCustomSource = false;
 
         if (detail.api_url) {
             const sourcesCfg = getVodSources();
             const matched = sourcesCfg.find(s => s.api === detail.api_url);
             if (matched) {
                 sourceName = matched.name;
-                isCustomSource = matched.id !== 'default';
             }
         } else if (detail.source === 'douban') {
             sourceName = '豆瓣推荐';
@@ -570,12 +637,12 @@ export const parseAllSources = (input: VodDetail | VodDetail[]): PlaySource[] =>
             const urlStr = urlArray[idx];
             if (!urlStr) return;
 
-            // Strict Filter for Default Source only
-            if (!isCustomSource) {
-                 if (!code.toLowerCase().includes('m3u8') && !urlStr.includes('.m3u8')) {
-                     return;
-                 }
-            }
+            // STRICT FILTER: Only allow M3U8 formats
+            const lowerCode = code.toLowerCase();
+            const lowerUrl = urlStr.toLowerCase();
+            const isM3u8 = lowerCode.includes('m3u8') || lowerUrl.includes('.m3u8');
+            
+            if (!isM3u8) return;
 
             const episodes: Episode[] = [];
             const lines = urlStr.split('#');
@@ -584,6 +651,7 @@ export const parseAllSources = (input: VodDetail | VodDetail[]): PlaySource[] =>
                 let title = parts.length > 1 ? parts[0] : `第 ${epIdx + 1} 集`;
                 const url = parts.length > 1 ? parts[1] : parts[0];
                 
+                // Clean up episode titles
                 if (
                     title === code || 
                     title.toLowerCase() === 'm3u8' || 
@@ -602,15 +670,12 @@ export const parseAllSources = (input: VodDetail | VodDetail[]): PlaySource[] =>
             });
             
             if (episodes.length > 0) {
-                // Rename logic: Name + Code to avoid duplicates if same API has multiple formats
-                // Or if different APIs have same name (unlikely if user names them well)
                 let finalName = sourceName;
-                if (allSources.some(s => s.name === sourceName)) {
-                     finalName = `${sourceName} (${code})`;
-                }
                 
-                // If the code is different from m3u8 or standard, maybe append it for clarity
-                if (code.toLowerCase() !== 'm3u8' && code.toLowerCase() !== 'ffm3u8' && code !== sourceName) {
+                // OPTIMIZED NAMING:
+                // Only append internal code (like dyttm3u8) if a source with this name ALREADY exists.
+                // This keeps the UI clean (e.g., just "官方源" or "如意资源") unless strictly necessary.
+                if (allSources.some(s => s.name === finalName)) {
                      finalName = `${sourceName} (${code})`;
                 }
 
