@@ -101,7 +101,7 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
 
   return (
     <div 
-        className="relative w-full h-[50vh] md:h-[65vh] rounded-2xl overflow-hidden mb-12 group shadow-2xl bg-gray-900 touch-pan-y"
+        className="relative w-full h-[500px] md:h-[600px] rounded-2xl overflow-hidden mb-12 group shadow-2xl bg-[#0a0a0a] touch-pan-y border border-white/5"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -111,76 +111,78 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
           <ImageWithFallback 
               src={activeItem.vod_pic} 
               alt={activeItem.vod_name} 
-              className="w-full h-full object-cover blur-md opacity-50 scale-110" 
+              className="w-full h-full object-cover blur-lg opacity-40 scale-110" 
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-[#020617]/50 to-transparent"></div>
-          <div className="absolute inset-0 bg-gradient-to-r from-[#020617] via-[#020617]/60 to-transparent"></div>
+          <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-[#020617]/80 to-transparent z-0"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-[#020617] via-[#020617]/50 to-transparent z-0"></div>
       </div>
 
       {/* Content Container */}
-      <div key={activeItem.vod_id + '_content'} className="absolute inset-0 flex items-center z-10 p-6 md:p-12 animate-slide-up">
-        <div className="w-full max-w-7xl mx-auto flex flex-col md:flex-row items-center md:items-end gap-8 lg:gap-12">
-            
-            {/* Small Poster (Vertical) - Hidden on mobile, visible on Tablet+ */}
-            <div className="hidden md:block flex-shrink-0 w-[200px] lg:w-[240px] aspect-[2/3] rounded-lg overflow-hidden shadow-[0_0_25px_rgba(0,0,0,0.6)] border border-white/10 rotate-[-2deg] hover:rotate-0 transition-transform duration-500">
-                <ImageWithFallback 
-                    src={activeItem.vod_pic} 
-                    alt={activeItem.vod_name} 
-                    className="w-full h-full object-cover" 
-                />
-            </div>
-
-            {/* Info Section */}
-            <div className="flex-1 text-center md:text-left space-y-4 md:space-y-6">
+      <div key={activeItem.vod_id + '_content'} className="absolute inset-0 z-10 flex items-center">
+        <div className="container mx-auto px-4 md:px-12 w-full">
+            <div className="flex flex-col md:flex-row items-center md:items-end gap-8 animate-slide-up">
                 
-                {/* Metadata Tags */}
-                <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
-                     <span className="bg-brand text-black text-xs font-black px-2 py-0.5 rounded uppercase tracking-wider">
-                        {detail?.score || activeItem.vod_score || 'HOT'}
-                     </span>
-                     <span className="bg-white/10 border border-white/10 text-gray-200 text-xs font-medium px-2 py-0.5 rounded backdrop-blur-md">
-                        {activeItem.vod_year || '2025'}
-                     </span>
-                     <span className="bg-white/10 border border-white/10 text-gray-200 text-xs font-medium px-2 py-0.5 rounded backdrop-blur-md">
-                        {activeItem.type_name || detail?.type_name || '精选'}
-                     </span>
-                     {detail?.area && (
-                        <span className="bg-white/10 border border-white/10 text-gray-200 text-xs font-medium px-2 py-0.5 rounded backdrop-blur-md">
-                            {detail.area}
-                        </span>
-                     )}
+                {/* Small Poster (Vertical) - Left Side */}
+                <div className="hidden md:block flex-shrink-0 w-[200px] lg:w-[240px] aspect-[2/3] rounded-xl overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.6)] border border-white/20 relative z-20 hover:scale-105 transition-transform duration-500 bg-black">
+                    <ImageWithFallback 
+                        src={activeItem.vod_pic} 
+                        alt={activeItem.vod_name} 
+                        className="w-full h-full object-cover" 
+                    />
                 </div>
 
-                {/* Title */}
-                <h2 className="text-3xl md:text-5xl lg:text-6xl font-black text-white leading-tight drop-shadow-xl">
-                    {activeItem.vod_name}
-                </h2>
-
-                {/* Sub-info (Director/Cast) */}
-                {(detail?.director || detail?.actor) && (
-                    <div className="text-gray-400 text-xs md:text-sm font-medium line-clamp-1 md:line-clamp-2">
-                        {detail?.director && <span className="mr-3">导演: {detail.director}</span>}
-                        {detail?.actor && <span>主演: {detail.actor}</span>}
+                {/* Info Section - Right Side */}
+                <div className="flex-1 text-center md:text-left space-y-4 md:space-y-6 max-w-4xl">
+                    
+                    {/* Metadata Tags */}
+                    <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
+                        <span className="bg-brand text-black text-xs font-black px-2 py-0.5 rounded uppercase tracking-wider">
+                            {detail?.score || activeItem.vod_score || 'HOT'}
+                        </span>
+                        <span className="bg-white/10 border border-white/10 text-gray-200 text-xs font-medium px-2 py-0.5 rounded backdrop-blur-md">
+                            {activeItem.vod_year || '2025'}
+                        </span>
+                        <span className="bg-white/10 border border-white/10 text-gray-200 text-xs font-medium px-2 py-0.5 rounded backdrop-blur-md">
+                            {activeItem.type_name || detail?.type_name || '精选'}
+                        </span>
+                        {detail?.area && (
+                            <span className="bg-white/10 border border-white/10 text-gray-200 text-xs font-medium px-2 py-0.5 rounded backdrop-blur-md">
+                                {detail.area}
+                            </span>
+                        )}
                     </div>
-                )}
 
-                {/* Description / Introduction */}
-                <p className="text-gray-300 text-sm md:text-base leading-relaxed max-w-2xl mx-auto md:mx-0 line-clamp-3 md:line-clamp-4 drop-shadow-md min-h-[4.5em]">
-                    {detail?.content ? detail.content.replace(/<[^>]+>/g, '') : (activeItem.vod_remarks || "暂无简介，点击立即播放观看...")}
-                </p>
+                    {/* Title */}
+                    <h2 className="text-3xl md:text-5xl lg:text-6xl font-black text-white leading-tight drop-shadow-xl tracking-tight">
+                        {activeItem.vod_name}
+                    </h2>
 
-                {/* Action Buttons */}
-                <div className="pt-2 flex justify-center md:justify-start gap-4">
-                   <button 
-                      onClick={() => onPlay(activeItem)}
-                      className="group/btn relative bg-brand hover:bg-brand-hover text-black text-base md:text-lg font-bold px-8 py-3 rounded-full flex items-center gap-2 transition-all hover:scale-105 shadow-[0_0_20px_rgba(34,197,94,0.4)] overflow-hidden"
-                   >
-                      <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300 skew-y-12"></div>
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 relative z-10">
-                        <path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" />
-                      </svg>
-                      <span className="relative z-10">立即播放</span>
-                   </button>
+                    {/* Sub-info (Director/Cast) */}
+                    {(detail?.director || detail?.actor) && (
+                        <div className="text-gray-400 text-xs md:text-sm font-medium line-clamp-1 md:line-clamp-2">
+                            {detail?.director && <span className="mr-3 text-gray-300">导演: {detail.director}</span>}
+                            {detail?.actor && <span>主演: {detail.actor}</span>}
+                        </div>
+                    )}
+
+                    {/* Description / Introduction - Fully fetched */}
+                    <p className="text-gray-300 text-sm md:text-base leading-relaxed mx-auto md:mx-0 line-clamp-4 md:line-clamp-5 drop-shadow-md min-h-[4.5em] md:pr-10">
+                        {detail?.content ? detail.content.replace(/<[^>]+>/g, '') : (activeItem.vod_remarks || "暂无简介，点击立即播放观看...")}
+                    </p>
+
+                    {/* Action Buttons */}
+                    <div className="pt-2 flex justify-center md:justify-start gap-4">
+                    <button 
+                        onClick={() => onPlay(activeItem)}
+                        className="group/btn relative bg-brand hover:bg-brand-hover text-black text-base md:text-lg font-bold px-8 py-3 rounded-full flex items-center gap-2 transition-all hover:scale-105 shadow-[0_0_20px_rgba(34,197,94,0.4)] overflow-hidden"
+                    >
+                        <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300 skew-y-12"></div>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 relative z-10">
+                            <path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" />
+                        </svg>
+                        <span className="relative z-10">立即播放</span>
+                    </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -201,13 +203,13 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
       {/* Optional Left/Right Arrows for Desktop */}
       <button 
         onClick={(e) => { e.stopPropagation(); handlePrev(); }}
-        className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/20 text-white/50 hover:bg-black/50 hover:text-white transition-all hidden md:flex"
+        className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/20 text-white/50 hover:bg-black/50 hover:text-white transition-all hidden md:flex backdrop-blur-sm border border-white/5"
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
       </button>
       <button 
         onClick={(e) => { e.stopPropagation(); handleNext(); }}
-        className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/20 text-white/50 hover:bg-black/50 hover:text-white transition-all hidden md:flex"
+        className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/20 text-white/50 hover:bg-black/50 hover:text-white transition-all hidden md:flex backdrop-blur-sm border border-white/5"
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
       </button>
