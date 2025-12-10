@@ -484,6 +484,7 @@ export const fetchPersonDetail = async (id: string | number): Promise<PersonDeta
 
 /**
  * Search from CMS Resource Sites (for Playback Sources)
+ * UPDATED: Now queries ALL active sources in parallel and returns aggregated results.
  */
 export const searchCms = async (keyword: string, page = 1): Promise<ApiResponse> => {
   const sources = getVodSources().filter(s => s.active);
@@ -493,7 +494,8 @@ export const searchCms = async (keyword: string, page = 1): Promise<ApiResponse>
       pg: page.toString(),
   });
 
-  for (const source of sources) {
+  // Query all sources in parallel
+  const promises = sources.map(async (source) => {
       const targetUrl = `${source.api}?${params.toString()}`;
       try {
           const data = await fetchWithProxy(targetUrl);
@@ -502,14 +504,28 @@ export const searchCms = async (keyword: string, page = 1): Promise<ApiResponse>
                   ...item,
                   api_url: source.api 
               }));
-              return { ...data, list };
+              return list;
           }
       } catch(e) {
           console.warn(`Search failed on source ${source.name}`, e);
       }
-  }
-  
-  return { code: 0, msg: "Error", page: 1, pagecount: 0, limit: "20", total: 0, list: [] };
+      return [];
+  });
+
+  const results = await Promise.all(promises);
+  // Flatten to get a single list of all items from all sources
+  const allList = results.flat();
+
+  // Return a synthetic response valid for the app's logic
+  return { 
+      code: 1, 
+      msg: "Success", 
+      page: page, 
+      pagecount: 1, 
+      limit: "20", 
+      total: allList.length, 
+      list: allList 
+  };
 };
 
 export const getMovieDetail = async (id: number | string, apiUrl?: string): Promise<VodDetail | null> => {
