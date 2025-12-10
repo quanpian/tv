@@ -95,12 +95,14 @@ const DANMAKU_CACHE = new Map<string, number>(); // title_epIndex -> episodeId
 
 // Robust Fetch: Tries direct first, then proxy
 const robustFetch = async (url: string, forceProxy = false) => {
+    const headers = { 'Accept': 'application/json' };
+    
     // 1. Try Direct Fetch (Fastest) if not forced to proxy
     if (!forceProxy) {
         try {
             const controller = new AbortController();
             const id = setTimeout(() => controller.abort(), 3000); // 3s fast timeout
-            const response = await fetch(url, { signal: controller.signal });
+            const response = await fetch(url, { headers, signal: controller.signal });
             clearTimeout(id);
             if (response.ok) return response;
         } catch (e) {
@@ -113,7 +115,7 @@ const robustFetch = async (url: string, forceProxy = false) => {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), 15000);
     try {
-        const response = await fetch(proxyUrl, { signal: controller.signal });
+        const response = await fetch(proxyUrl, { headers, signal: controller.signal });
         clearTimeout(id);
         if (!response.ok) throw new Error(`Proxy Fetch failed: ${response.status}`);
         return response;
@@ -169,6 +171,7 @@ const transformDanmaku = (comments: any[]) => {
 
 const fetchComments = async (episodeId: string | number) => {
     try {
+        // withRelated=true matches other episodes in the same group/season logic sometimes, ch_convert=1 converts Trad to Simp Chinese
         const commentUrl = `${API_COMMENT}/${episodeId}?withRelated=true&ch_convert=1`;
         const res = await robustFetch(commentUrl, false);
         const data = await res.json();
@@ -183,11 +186,10 @@ const fetchComments = async (episodeId: string | number) => {
 // Smarter Title Cleaning: Preserves Season/Part info, removes Technical tags
 const getSearchTerm = (title: string): string => {
     return title
-        .replace(/[\(\[\{【](?!Part|Vol|Ep|Season|第).+?[\)\]\}】]/gi, ' ') // Remove brackets but keep season/ep info if caught
-        .replace(/(?:4k|1080p|720p|hd|bd|web-dl|hdtv|dvdrip|x264|x265|aac|dd5\.1|国语|粤语|中字|双语|完整版|未删减|电视剧|动漫|综艺|movie|tv)/gi, ' ')
-        .replace(/\./g, ' ') // Replace dots with spaces for search
-        .replace(/\s+/g, ' ')
-        .trim();
+        .replace(/[\(\[\{【](?!Part|Vol|Ep|Season|第).+?[\)\]\}】]/gi, '') // Remove content inside brackets unless it looks like Season info
+        .replace(/(?:4k|1080p|720p|hd|bd|web-dl|hdtv|dvdrip|x264|x265|aac|dd5\.1|国语|粤语|中字|双语|完整版|未删减|电视剧|动漫|综艺|movie|tv|\d{4}年|\d{4})/gi, '')
+        .trim()
+        .replace(/\s+/g, ' '); // Normalize spaces
 };
 
 const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: string) => {
@@ -230,6 +232,7 @@ const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: strin
 
     for (const fileName of virtualFiles) {
         try {
+            // hash=0&length=0 allows matching purely by filename in modern Dandanplay APIs
             const matchUrl = `${API_MATCH}?fileName=${encodeURIComponent(fileName)}&hash=0&length=0`;
             const matchRes = await robustFetch(matchUrl, false);
             const matchData = await matchRes.json();
