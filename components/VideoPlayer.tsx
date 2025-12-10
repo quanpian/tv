@@ -85,6 +85,7 @@ function filterAdsFromM3U8(m3u8Content: string): string {
 // ================= API Configuration =================
 const DANMAKU_API_BASE = 'https://dm1.laidd.de5.net/5573108';
 const API_MATCH = `${DANMAKU_API_BASE}/api/v2/match`;
+const API_SEARCH_EPISODES = `${DANMAKU_API_BASE}/api/v2/search/episodes`;
 const API_COMMENT = `${DANMAKU_API_BASE}/api/v2/comment`;
 
 // GLOBAL CUSTOM PROXY
@@ -210,8 +211,7 @@ const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: strin
 
     let matchedEpisodeId: number | null = null;
 
-    // STRATEGY: Match API (Smart Virtual Filename) ONLY
-    // We try multiple standard naming conventions to maximize hit rate with the Match API
+    // STRATEGY 1: Match API (Smart Virtual Filename) - Fastest & Most Accurate
     const virtualFiles = [
         `[Unknown] ${cleanTitle} - ${epStr}.mp4`,
         `${cleanTitle} - ${epStr}.mp4`,
@@ -220,19 +220,13 @@ const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: strin
         `${cleanTitle} S01E${epStr}.mp4`
     ];
 
-    // If cleanTitle has spaces, also try dot-separated (common in torrents)
     if (cleanTitle.includes(' ')) {
         virtualFiles.push(`[Unknown] ${cleanTitle.replace(/\s+/g, '.')} - ${epStr}.mp4`);
     }
 
-    // Try raw title if it differs significantly
-    if (title !== cleanTitle) {
-         virtualFiles.push(`[Unknown] ${title} - ${epStr}.mp4`);
-    }
-
     for (const fileName of virtualFiles) {
         try {
-            // hash=0&length=0 allows matching purely by filename in modern Dandanplay APIs
+            // hash=0&length=0 allows matching purely by filename
             const matchUrl = `${API_MATCH}?fileName=${encodeURIComponent(fileName)}&hash=0&length=0`;
             const matchRes = await robustFetch(matchUrl, false);
             const matchData = await matchRes.json();
@@ -243,6 +237,29 @@ const fetchDanmaku = async (title: string, episodeIndex: number, videoUrl: strin
                 break;
             }
         } catch (e) { /* continue */ }
+    }
+
+    // STRATEGY 2: Smart Search Fallback (Fuzzy Title + Episode) - Handles Weird Filenames
+    if (!matchedEpisodeId) {
+        try {
+            console.log('Match failed, trying Smart Search...');
+            const searchUrl = `${API_SEARCH_EPISODES}?anime=${encodeURIComponent(cleanTitle)}&episode=${episodeNum}`;
+            const searchRes = await robustFetch(searchUrl, false);
+            const searchData = await searchRes.json();
+
+            if (searchData.animes && searchData.animes.length > 0) {
+                // Heuristic: The first anime result is usually the most relevant for a specific query
+                const bestAnime = searchData.animes[0];
+                
+                // If API returns episode list, pick the first one (since we filtered by episode param)
+                if (bestAnime.episodes && bestAnime.episodes.length > 0) {
+                    matchedEpisodeId = bestAnime.episodes[0].episodeId;
+                    console.log(`Danmaku Matched via Search: ${bestAnime.animeTitle} Ep:${bestAnime.episodes[0].episodeTitle}`);
+                }
+            }
+        } catch (e) {
+            console.warn('Smart Search failed', e);
+        }
     }
 
     if (matchedEpisodeId) {

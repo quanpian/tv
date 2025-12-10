@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getHomeSections, searchDouban, searchCms, getAggregatedSearch, getAggregatedMovieDetail, parseAllSources, enrichVodDetail, fetchDoubanData, fetchCategoryItems, getHistory, addToHistory, removeFromHistory, fetchPersonDetail, initVodSources } from './services/vodService';
@@ -38,24 +39,107 @@ const TAB_TO_URL: Record<string, string> = {
 };
 
 const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodItem) => void }) => {
-  if (!items || items.length === 0) return null;
-  const item = items[0]; 
+  const [detail, setDetail] = useState<any>(null);
+  const [activeItem, setActiveItem] = useState<VodItem | null>(null);
+
+  useEffect(() => {
+      if (items && items.length > 0) {
+          const item = items[0];
+          setActiveItem(item);
+          // Fetch rich details (synopsis, director, etc.)
+          fetchDoubanData(item.vod_name, item.vod_id).then(res => {
+              if (res) setDetail(res);
+          });
+      }
+  }, [items]);
+
+  if (!activeItem) return null;
+
   return (
-    <div className="relative w-full h-[40vh] md:h-[60vh] rounded-2xl overflow-hidden mb-8 group cursor-pointer" onClick={() => onPlay(item)}>
-      <ImageWithFallback src={item.vod_pic} alt={item.vod_name} className="w-full h-full object-cover" />
-      <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent">
-        <div className="absolute bottom-0 left-0 p-6 md:p-12">
-           <h2 className="text-3xl md:text-5xl font-bold text-white mb-2">{item.vod_name}</h2>
-           <p className="text-gray-300 line-clamp-2 max-w-xl">{item.vod_remarks}</p>
-        </div>
+    <div className="relative w-full h-[50vh] md:h-[65vh] rounded-2xl overflow-hidden mb-12 group shadow-2xl bg-gray-900">
+      {/* Background Layer - heavily blurred and darkened */}
+      <div className="absolute inset-0">
+          <ImageWithFallback 
+              src={activeItem.vod_pic} 
+              alt={activeItem.vod_name} 
+              className="w-full h-full object-cover blur-md opacity-50 scale-110" 
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-[#020617]/50 to-transparent"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-[#020617] via-[#020617]/60 to-transparent"></div>
       </div>
-      <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-         <div className="bg-brand/90 text-black px-6 py-2 rounded-full font-bold flex items-center gap-2 transform scale-110">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-              <path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" />
-            </svg>
-            立即播放
-         </div>
+
+      {/* Content Container */}
+      <div className="absolute inset-0 flex items-center z-10 p-6 md:p-12">
+        <div className="w-full max-w-7xl mx-auto flex flex-col md:flex-row items-center md:items-end gap-8 lg:gap-12">
+            
+            {/* Small Poster (Vertical) - Hidden on mobile, visible on Tablet+ */}
+            <div className="hidden md:block flex-shrink-0 w-[200px] lg:w-[240px] aspect-[2/3] rounded-lg overflow-hidden shadow-[0_0_25px_rgba(0,0,0,0.6)] border border-white/10 rotate-[-2deg] hover:rotate-0 transition-transform duration-500">
+                <ImageWithFallback 
+                    src={activeItem.vod_pic} 
+                    alt={activeItem.vod_name} 
+                    className="w-full h-full object-cover" 
+                />
+            </div>
+
+            {/* Info Section */}
+            <div className="flex-1 text-center md:text-left space-y-4 md:space-y-6">
+                
+                {/* Metadata Tags */}
+                <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 animate-fade-in">
+                     <span className="bg-brand text-black text-xs font-black px-2 py-0.5 rounded uppercase tracking-wider">
+                        {detail?.score || activeItem.vod_score || 'HOT'}
+                     </span>
+                     <span className="bg-white/10 border border-white/10 text-gray-200 text-xs font-medium px-2 py-0.5 rounded backdrop-blur-md">
+                        {activeItem.vod_year || '2025'}
+                     </span>
+                     <span className="bg-white/10 border border-white/10 text-gray-200 text-xs font-medium px-2 py-0.5 rounded backdrop-blur-md">
+                        {activeItem.type_name || detail?.type_name || '精选'}
+                     </span>
+                     {detail?.area && (
+                        <span className="bg-white/10 border border-white/10 text-gray-200 text-xs font-medium px-2 py-0.5 rounded backdrop-blur-md">
+                            {detail.area}
+                        </span>
+                     )}
+                </div>
+
+                {/* Title */}
+                <h2 className="text-3xl md:text-5xl lg:text-6xl font-black text-white leading-tight drop-shadow-xl animate-slide-up">
+                    {activeItem.vod_name}
+                </h2>
+
+                {/* Sub-info (Director/Cast) */}
+                {(detail?.director || detail?.actor) && (
+                    <div className="text-gray-400 text-xs md:text-sm font-medium line-clamp-1 md:line-clamp-2">
+                        {detail?.director && <span className="mr-3">导演: {detail.director}</span>}
+                        {detail?.actor && <span>主演: {detail.actor}</span>}
+                    </div>
+                )}
+
+                {/* Description / Introduction */}
+                <p className="text-gray-300 text-sm md:text-base leading-relaxed max-w-2xl mx-auto md:mx-0 line-clamp-3 md:line-clamp-4 drop-shadow-md">
+                    {detail?.content ? detail.content.replace(/<[^>]+>/g, '') : (activeItem.vod_remarks || "暂无简介，点击立即播放观看...")}
+                </p>
+
+                {/* Action Buttons */}
+                <div className="pt-2 flex justify-center md:justify-start gap-4">
+                   <button 
+                      onClick={() => onPlay(activeItem)}
+                      className="group/btn relative bg-brand hover:bg-brand-hover text-black text-base md:text-lg font-bold px-8 py-3 rounded-full flex items-center gap-2 transition-all hover:scale-105 shadow-[0_0_20px_rgba(34,197,94,0.4)] overflow-hidden"
+                   >
+                      <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300 skew-y-12"></div>
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 relative z-10">
+                        <path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" />
+                      </svg>
+                      <span className="relative z-10">立即播放</span>
+                   </button>
+                   
+                   {/* Optional: Detail button or similar */}
+                   {/* <button className="bg-white/10 hover:bg-white/20 text-white font-medium px-6 py-3 rounded-full backdrop-blur-md border border-white/10 transition-all">
+                       查看详情
+                   </button> */}
+                </div>
+            </div>
+        </div>
       </div>
     </div>
   );
