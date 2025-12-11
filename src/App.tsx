@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { getHomeSections, searchCms, getAggregatedSearch, getAggregatedMovieDetail, parseAllSources, enrichVodDetail, fetchDoubanData, fetchCategoryItems, getHistory, addToHistory, removeFromHistory, fetchPersonDetail, initVodSources } from './services/vodService';
+import { getHomeSections, searchCms, getAggregatedSearch, getMovieDetail, getAlternativeVodDetails, parseAllSources, enrichVodDetail, fetchDoubanData, fetchCategoryItems, getHistory, addToHistory, removeFromHistory, fetchPersonDetail, initVodSources } from './services/vodService';
 import MovieInfoCard from './components/MovieInfoCard';
 import ImageWithFallback from './components/ImageWithFallback';
 import { VodItem, VodDetail, Episode, PlaySource, HistoryItem, PersonDetail } from './types';
@@ -94,7 +94,7 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
 
   return (
     <div 
-        className="relative w-full h-[280px] md:h-[480px] rounded-2xl overflow-hidden mb-8 md:mb-12 group shadow-2xl bg-[#0a0a0a] touch-pan-y border border-white/5"
+        className="relative w-full h-[210px] md:h-[360px] rounded-2xl overflow-hidden mb-8 md:mb-12 group shadow-2xl bg-[#0a0a0a] touch-pan-y border border-white/5"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -117,7 +117,7 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
             <div className="flex flex-row items-center gap-4 md:gap-10 w-full animate-slide-up">
                 
                 {/* Poster: Visible & Sized for Mobile Side-by-Side */}
-                <div className="flex-shrink-0 w-[110px] md:w-[220px] aspect-[2/3] rounded-lg md:rounded-xl overflow-hidden shadow-[0_5px_20px_rgba(0,0,0,0.6)] border border-white/20 relative z-20 hover:scale-105 transition-transform duration-500 bg-black">
+                <div className="flex-shrink-0 w-[90px] md:w-[160px] aspect-[2/3] rounded-lg md:rounded-xl overflow-hidden shadow-[0_5px_20px_rgba(0,0,0,0.6)] border border-white/20 relative z-20 hover:scale-105 transition-transform duration-500 bg-black">
                     <ImageWithFallback 
                         src={activeItem.vod_pic} 
                         alt={activeItem.vod_name} 
@@ -142,7 +142,7 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
                     </div>
 
                     {/* Title */}
-                    <h2 className="text-xl md:text-5xl font-black text-white leading-tight drop-shadow-xl tracking-tight line-clamp-2">
+                    <h2 className="text-xl md:text-4xl font-black text-white leading-tight drop-shadow-xl tracking-tight line-clamp-2">
                         {activeItem.vod_name}
                     </h2>
 
@@ -170,7 +170,6 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
                         </button>
                         
                         <button 
-                            onClick={() => onPlay(activeItem)}
                             className="bg-white/10 text-white hover:bg-white/20 border border-white/10 backdrop-blur-md text-xs md:text-base font-bold px-4 py-1.5 md:px-8 md:py-3 rounded-full flex items-center gap-1 md:gap-2 transition-all hover:scale-105 whitespace-nowrap"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 md:w-5 md:h-5">
@@ -571,23 +570,138 @@ const App: React.FC = () => {
       fetchInitial();
   }, [fetchInitial]);
 
+  // Resolve Douban ID to CMS Content
+  const handleResolveDoubanMovie = async (doubanId: string, name?: string, year?: string) => {
+        setLoading(true);
+        setCurrentMovie(null); 
+        
+        try {
+            let searchName = name;
+            // If name is missing (direct URL access), fetch from Douban
+            if (!searchName) {
+                 const data = await fetchDoubanData('', doubanId);
+                 if (data) searchName = data.title || ''; 
+            }
+
+            if (!searchName) {
+                 // Fallback if metadata fetch fails
+                 const hist = getHistory().find(h => String(h.vod_id) === doubanId);
+                 if(hist) searchName = hist.vod_name;
+            }
+
+            if (!searchName) {
+                 alert('无法获取影片信息');
+                 setLoading(false);
+                 return;
+            }
+
+            // Perform CMS Search
+            const cleanName = searchName
+                .replace(/[（\(]\d{4}[）\)]/g, '')
+                .replace(/第.+?季|Season\s*\d+|S\d+/gi, '')
+                .replace(/集/g, '')
+                .trim();
+            
+            const queries = [searchName, cleanName];
+            let foundVideo: VodItem | null = null;
+
+            for (const q of queries) {
+                if(!q) continue;
+                const res = await searchCms(q);
+                if (res.list && res.list.length > 0) {
+                    const cleanTitle = (t: string) => t.replace(/[（\(].*?[）\)]/g, '').trim();
+                    const candidates = res.list as VodItem[];
+
+                    // 1. Exact Match (High Priority)
+                    let match = candidates.find(v => v.vod_name === searchName);
+                    
+                    // 2. Cleaned Exact Match
+                    if (!match) {
+                        match = candidates.find(v => cleanTitle(v.vod_name) === cleanTitle(searchName));
+                    }
+
+                    // 3. Year Match (High Priority if Year exists)
+                    if (!match && year) {
+                        match = candidates.find(v => v.vod_name.includes(searchName) && v.vod_year === year);
+                    }
+
+                    // 4. Smart Fuzzy Match (Shortest title containing keyword, preventing "Iron Man" playing "Iron Man 3")
+                    if (!match) {
+                        // Filter items that actually contain the keyword
+                        const validMatches = candidates.filter(v => v.vod_name.includes(searchName));
+                        
+                        if (validMatches.length > 0) {
+                            // Sort by length difference
+                            validMatches.sort((a, b) => a.vod_name.length - b.vod_name.length);
+                            
+                            // Take the shortest one (most likely the original movie)
+                            match = validMatches[0];
+                        }
+                    }
+
+                    if (match) {
+                        foundVideo = match;
+                        break;
+                    }
+                }
+            }
+
+            if (foundVideo) {
+                await handleSelectMovie(foundVideo.vod_id, foundVideo.api_url);
+                // Enhance the loaded movie with Douban ID since we know it
+                setCurrentMovie(prev => {
+                    if(!prev) return null;
+                    return {
+                        ...prev,
+                        vod_douban_id: doubanId,
+                    }
+                });
+            } else {
+                // If strict matching failed, do NOT autoplay random video. Fallback to Search.
+                alert('自动匹配失败，请在搜索结果中选择 (Auto-match failed, please select from results)');
+                triggerSearch(searchName);
+            }
+
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+  }
+
   useEffect(() => {
-      const path = location.pathname.split('/')[1] || '';
+      const pathParts = location.pathname.split('/');
+      const path = pathParts[1] || '';
+      
       if (path === 'play') {
-          const id = location.pathname.split('/')[2];
-          if (id && (!currentMovie || String(currentMovie.vod_id) !== id)) {
-              handleSelectMovie(id);
+          const idParam = pathParts[2];
+          if (idParam) {
+              if (idParam.startsWith('db_')) {
+                  // It's a Douban ID, resolve it
+                  const doubanId = idParam.replace('db_', '');
+                  // Check if we are already showing this movie to avoid loops
+                  if (!currentMovie || String(currentMovie.vod_douban_id) !== doubanId) {
+                      const state = location.state as any;
+                      const name = state?.name;
+                      const year = state?.year;
+                      handleResolveDoubanMovie(doubanId, name, year);
+                  }
+              } else {
+                  // Standard CMS ID
+                  if (!currentMovie || String(currentMovie.vod_id) !== idParam) {
+                      handleSelectMovie(idParam);
+                  }
+              }
           }
       } else {
           const tab = URL_TO_TAB[path] || 'home';
           setActiveTab(tab);
-          if (path !== 'play') {
-              setCurrentMovie(null); 
-          }
+          setCurrentMovie(null); 
           setHasSearched(tab === 'search');
       }
   }, [location.pathname]);
 
+  // ... rest of the file remains same ...
   useEffect(() => {
     const handleClickOutside = () => setContextMenu({ ...contextMenu, visible: false });
     window.addEventListener('click', handleClickOutside);
@@ -674,7 +788,6 @@ const App: React.FC = () => {
                 } else {
                     setSearchResults([]);
                 }
-                // Scroll to top of results container if available
                 if (resultsRef.current) {
                     resultsRef.current.scrollIntoView({ behavior: 'smooth' });
                 }
@@ -693,40 +806,9 @@ const App: React.FC = () => {
           return;
       }
 
-      setLoading(true);
-      try {
-          await fetchDoubanData(item.vod_name, item.vod_id);
-          const cleanName = item.vod_name
-              .replace(/[（\(]\d{4}[）\)]/g, '')
-              .replace(/第.+?季|Season\s*\d+|S\d+/gi, '')
-              .replace(/集/g, '')
-              .trim();
-
-          const queries = [item.vod_name, cleanName];
-          let foundVideo: VodItem | null = null;
-          
-          for (const q of queries) {
-              if(!q) continue;
-              const res = await searchCms(q); 
-              if (res.list && res.list.length > 0) {
-                  const exact = res.list.find((v: any) => v.vod_name === item.vod_name);
-                  foundVideo = (exact || res.list[0]) as VodItem;
-                  break; 
-              }
-          }
-
-          if (foundVideo) {
-              handleSelectMovie(foundVideo.vod_id, foundVideo.api_url);
-              navigate(`/play/${foundVideo.vod_id}`);
-          } else {
-             triggerSearch(cleanName || item.vod_name);
-          }
-      } catch (e) {
-          console.error("Failed to find video source", e);
-          triggerSearch(item.vod_name);
-      } finally {
-          setLoading(false);
-      }
+      // Douban Item - Immediate Navigation
+      // We pass vod_name in state to assist resolution
+      navigate(`/play/db_${item.vod_id}`, { state: { name: item.vod_name, pic: item.vod_pic, year: item.vod_year } });
   };
 
   const handleSelectMovie = async (id: number | string, apiUrl?: string) => {
@@ -735,12 +817,12 @@ const App: React.FC = () => {
       setSidePanelTab('episodes');
       
       try {
-          const result = await getAggregatedMovieDetail(id, apiUrl);
+          // 1. FAST PATH: Fetch Main Detail ONLY
+          const realId = String(id).replace('cms_', '');
+          const main = await getMovieDetail(realId, apiUrl);
           
-          if (result && result.main) {
-              const { main, alternatives } = result;
-              
-              const allSources = parseAllSources([main, ...alternatives]);
+          if (main) {
+              const allSources = parseAllSources(main);
               
               if (allSources.length > 0) {
                   const m3u8Index = allSources.findIndex(s => s.name.toLowerCase().includes('m3u8'));
@@ -749,7 +831,8 @@ const App: React.FC = () => {
                   setAvailableSources(allSources);
                   setCurrentSourceIndex(initialIndex);
                   setEpisodes(allSources[initialIndex].episodes);
-                  setCurrentMovie(main);
+                  setCurrentMovie(main); // Render Player IMMEDIATELY
+                  setLoading(false);     // Hide Loader IMMEDIATELY
                   
                   const savedIndex = parseInt(localStorage.getItem(`cine_last_episode_${main.vod_id}`) || '0');
                   if (!isNaN(savedIndex) && savedIndex >= 0 && savedIndex < allSources[initialIndex].episodes.length) {
@@ -760,6 +843,7 @@ const App: React.FC = () => {
                   
                   window.scrollTo({ top: 0, behavior: 'smooth' });
 
+                  // 2. BACKGROUND: Enrich Metadata
                   enrichVodDetail(main).then(updates => {
                       if (updates) {
                           setCurrentMovie(prev => {
@@ -770,10 +854,28 @@ const App: React.FC = () => {
                           });
                       }
                   });
-              } else {
-                 alert('未找到可播放的M3U8资源 (No playable M3U8 sources found)');
+
+                  // 3. BACKGROUND: Fetch Alternative Sources
+                  getAlternativeVodDetails(main).then(alternatives => {
+                      if (alternatives.length > 0) {
+                          const altSources = parseAllSources(alternatives);
+                          if (altSources.length > 0) {
+                              setAvailableSources(prev => {
+                                  const existingNames = new Set(prev.map(s => s.name));
+                                  const newUnique = altSources.filter(s => !existingNames.has(s.name));
+                                  return [...prev, ...newUnique];
+                              });
+                          }
+                      }
+                  });
+
+                  return;
               }
           }
+          
+          // Fallback if main source empty (unlikely if we got here via search)
+          alert('未找到可播放的M3U8资源 (No playable M3U8 sources found)');
+
       } catch (error) {
           console.error(error);
       } finally {
