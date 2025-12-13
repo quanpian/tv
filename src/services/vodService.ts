@@ -1,4 +1,3 @@
-
 import { Episode, VodDetail, ApiResponse, ActorItem, RecommendationItem, VodItem, VodSource, PlaySource, HistoryItem, PersonDetail } from '../types';
 import { createClient } from '@supabase/supabase-js';
 
@@ -565,7 +564,34 @@ export const fetchPersonDetail = async (id: string | number): Promise<PersonDeta
             if (text.includes('职业')) role = text.replace('职业:', '').trim();
         });
         
-        const intro = doc.querySelector('#intro .bd')?.textContent?.trim() || '';
+        // Parse Intro with better handling for "Show All" and <br>
+        let intro = '';
+        const introContainer = doc.querySelector('#intro .bd');
+        if (introContainer) {
+            // Check for full hidden text first
+            const fullSpan = introContainer.querySelector('span.all.hidden');
+            if (fullSpan) {
+                // Get innerHTML to preserve <br>, replace with \n
+                let html = fullSpan.innerHTML;
+                html = html.replace(/<br\s*\/?>/gi, '\n');
+                // Strip other tags via temporary element
+                const tmp = document.createElement('div');
+                tmp.innerHTML = html;
+                intro = tmp.textContent?.trim() || '';
+            } else {
+                // Fallback to visible text, but handle <br> if present in innerHTML
+                let html = introContainer.innerHTML;
+                html = html.replace(/<br\s*\/?>/gi, '\n');
+                const tmp = document.createElement('div');
+                tmp.innerHTML = html;
+                let text = tmp.textContent?.trim() || '';
+                // Remove "(展开)" or similar text which might be part of the visible text node
+                text = text.replace(/\(展开\)$/, '').trim();
+                // Also remove the "expand" link text if it got captured in textContent
+                // A safer way is to clone and remove the link before processing, but innerHTML replace works generally
+                intro = text;
+            }
+        }
 
         // Parse Works (Best & Recent)
         let works: VodItem[] = [];

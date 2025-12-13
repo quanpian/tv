@@ -440,8 +440,8 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
                 name: 'p2p-info',
                 position: 'right',
                 index: 20,
-                html: '<div style="display:flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;border-radius:50%;background:#94a3b8;box-shadow:0 0 4px #94a3b8;"></span><span style="font-size:11px;opacity:0.8;">P2P准备中</span></div>',
-                tooltip: '智能P2P加速',
+                html: '<div style="display:flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;border-radius:50%;background:#94a3b8;box-shadow:0 0 4px #94a3b8;"></span><span style="font-size:11px;opacity:0.8;">P2P加速中</span></div>',
+                tooltip: '智能P2P加速正在初始化...',
                 style: { marginRight: '10px', cursor: 'help', display: 'flex', alignItems: 'center' }
              }
           ],
@@ -530,8 +530,11 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
                       const hls = new Hls({
                           debug: false,
                           enableWorker: true,
-                          maxBufferLength: 60,
-                          maxMaxBufferLength: 600,
+                          // OPTIMIZED BUFFER CONFIG FOR P2P
+                          // Large buffers help P2P sharing (uploading) and stability
+                          maxBufferLength: 60, // 60s forward buffer
+                          maxMaxBufferLength: 300, // Up to 5 mins
+                          backBufferLength: 90, // Keep 90s of back buffer for seeding to others
                           startLevel: -1,
                           autoStartLoad: true,
                           pLoader: CustomLoader as any,
@@ -549,31 +552,62 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
                             
                             let p2pBytes = 0;
                             let httpBytes = 0;
+                            let lastP2PBytes = 0;
+                            let lastHttpBytes = 0;
+                            let lastTs = Date.now();
                             
                             const updateP2PDisplay = () => {
                                 const el = art.controls['p2p-info'];
                                 if(el) {
+                                    // Calculate Ratio
                                     const total = p2pBytes + httpBytes;
                                     const ratio = total > 0 ? Math.round((p2pBytes / total) * 100) : 0;
                                     const peers = engine.peers ? engine.peers.length : 0;
                                     
-                                    let color = '#22c55e'; // Green
-                                    if (peers === 0) color = '#94a3b8'; // Grey
-                                    else if (ratio > 50) color = '#3b82f6'; // Blue
+                                    // Calculate Speed
+                                    const now = Date.now();
+                                    const deltaMs = now - lastTs;
                                     
+                                    let speedText = '';
+                                    if (deltaMs > 500) { // Update speed every ~500ms+
+                                        const deltaBytes = (p2pBytes + httpBytes) - (lastP2PBytes + lastHttpBytes);
+                                        const speedBps = (deltaBytes * 1000) / deltaMs;
+                                        const speedKBps = speedBps / 1024;
+                                        
+                                        if (speedKBps > 1024) {
+                                            speedText = `${(speedKBps / 1024).toFixed(1)} MB/s`;
+                                        } else {
+                                            speedText = `${Math.round(speedKBps)} KB/s`;
+                                        }
+                                        
+                                        lastP2PBytes = p2pBytes;
+                                        lastHttpBytes = httpBytes;
+                                        lastTs = now;
+                                    }
+
+                                    // Dynamic Color Status
+                                    let color = '#94a3b8'; // Grey (Idle)
+                                    if (peers > 0) {
+                                        color = ratio > 60 ? '#22c55e' : '#3b82f6'; // Green (P2P dominant) or Blue (Hybrid)
+                                    }
+                                    
+                                    // Compact Display
                                     el.innerHTML = `
-                                        <div style="display:flex;align-items:center;gap:6px;font-family:monospace;">
+                                        <div style="display:flex;align-items:center;gap:6px;font-family:monospace;background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:4px;">
                                             <span style="width:6px;height:6px;border-radius:50%;background:${color};box-shadow:0 0 6px ${color};"></span>
-                                            <span style="font-size:11px;color:#e2e8f0;">
-                                                P2P: <span style="color:${color};font-weight:bold;">${peers}</span>节点 
-                                                | <span style="color:${ratio > 0 ? '#4ade80' : '#94a3b8'}">省流${ratio}%</span>
-                                            </span>
+                                            <div style="display:flex;flex-direction:column;line-height:1;align-items:flex-start;">
+                                                <span style="font-size:10px;color:#e2e8f0;font-weight:bold;">${speedText || '0 KB/s'}</span>
+                                                <span style="font-size:9px;color:${color};opacity:0.9;">P2P ${ratio}% • ${peers}节点</span>
+                                            </div>
                                         </div>
                                     `;
-                                    el.title = `已通过P2P下载: ${(p2pBytes/1024/1024).toFixed(1)}MB\n已通过HTTP下载: ${(httpBytes/1024/1024).toFixed(1)}MB`;
+                                    
+                                    // Detailed Tooltip
+                                    el.title = `累计节省流量 (P2P): ${(p2pBytes/1024/1024).toFixed(1)}MB\n累计消耗流量 (HTTP): ${(httpBytes/1024/1024).toFixed(1)}MB\n当前连接节点: ${peers}个`;
                                 }
                             };
 
+                            // Update stats on every 'stats' event (usually implies segment download)
                             engine.on('stats', (stats: any) => {
                                 p2pBytes = stats.totalP2PDownloaded;
                                 httpBytes = stats.totalHTTPDownloaded;
@@ -583,6 +617,9 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
                             engine.on('peers', () => {
                                 updateP2PDisplay();
                             });
+                            
+                            // Initialize display immediately
+                            updateP2PDisplay();
 
                           } catch (e) {
                               console.warn('P2P Init Error', e);

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getHomeSections, searchCms, getAggregatedSearch, getAggregatedMovieDetail, parseAllSources, enrichVodDetail, fetchDoubanData, fetchCategoryItems, getHistory, addToHistory, removeFromHistory, fetchPersonDetail, initVodSources, getMovieDetail, getAlternativeVodDetails } from './services/vodService';
@@ -95,7 +94,7 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
 
   return (
     <div 
-        className="relative w-full h-[210px] md:h-[360px] rounded-2xl overflow-hidden mb-8 md:mb-12 group shadow-2xl bg-[#0a0a0a] touch-pan-y border border-white/5"
+        className="relative w-full h-[520px] md:h-[420px] rounded-2xl overflow-hidden mb-8 md:mb-12 group shadow-2xl bg-[#0a0a0a] touch-pan-y border border-white/5"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -107,18 +106,20 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
               alt={activeItem.vod_name} 
               className="w-full h-full object-cover blur-md opacity-40 scale-105" 
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-[#020617]/80 to-transparent z-0"></div>
-          <div className="absolute inset-0 bg-gradient-to-r from-[#020617] via-[#020617]/70 to-transparent z-0"></div>
+          {/* Vertical Gradient for Mobile */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-[#020617]/60 to-transparent z-0"></div>
+          {/* Horizontal Gradient for Desktop */}
+          <div className="absolute inset-0 bg-gradient-to-r from-[#020617]/80 via-transparent to-transparent z-0 hidden md:block"></div>
       </div>
 
       {/* Content Container */}
       <div key={activeItem.vod_id + '_content'} className="absolute inset-0 z-10 flex items-center justify-center">
-        <div className="container mx-auto px-4 md:px-12 w-full h-full flex items-center">
-            {/* Force Row Layout on ALL screens (including mobile) */}
-            <div className="flex flex-row items-center gap-4 md:gap-10 w-full animate-slide-up">
+        <div className="container mx-auto px-6 md:px-12 w-full h-full flex items-center justify-center md:justify-start">
+            {/* Flex Column on Mobile, Row on Desktop */}
+            <div className="flex flex-col md:flex-row items-center md:items-center gap-6 md:gap-10 w-full animate-slide-up max-w-4xl md:max-w-none pt-4 md:pt-0">
                 
-                {/* Poster: Visible & Sized for Mobile Side-by-Side */}
-                <div className="flex-shrink-0 w-[90px] md:w-[160px] aspect-[2/3] rounded-lg md:rounded-xl overflow-hidden shadow-[0_5px_20px_rgba(0,0,0,0.6)] border border-white/20 relative z-20 hover:scale-105 transition-transform duration-500 bg-black">
+                {/* Poster: Larger on mobile now */}
+                <div className="flex-shrink-0 w-[180px] md:w-[220px] aspect-[2/3] rounded-xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.5)] border-2 border-white/20 relative z-20 hover:scale-105 transition-transform duration-500 bg-black">
                     <ImageWithFallback 
                         src={activeItem.vod_pic} 
                         alt={activeItem.vod_name} 
@@ -126,54 +127,54 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
                     />
                 </div>
 
-                {/* Info Section: Always Left Aligned */}
-                <div className="flex-1 text-left space-y-1.5 md:space-y-4 flex flex-col items-start justify-center min-w-0">
+                {/* Info Section: Center on mobile, Left on desktop */}
+                <div className="flex-1 text-center md:text-left space-y-3 md:space-y-4 flex flex-col items-center md:items-start justify-center min-w-0">
                     
-                    {/* Tags */}
-                    <div className="flex flex-wrap items-center justify-start gap-1.5 md:gap-2">
-                        <span className="bg-brand text-black text-[10px] md:text-xs font-black px-1.5 py-0.5 rounded uppercase tracking-wider">
+                    {/* Title - Bigger */}
+                    <h2 className="text-2xl md:text-5xl font-black text-white leading-tight drop-shadow-xl tracking-tight line-clamp-2">
+                        {activeItem.vod_name}
+                    </h2>
+
+                    {/* Tags - Centered on mobile */}
+                    <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
+                        <span className="bg-brand text-black text-xs font-black px-2 py-0.5 rounded uppercase tracking-wider shadow-lg shadow-brand/20">
                             {detail?.score || activeItem.vod_score || 'HOT'}
                         </span>
-                        <span className="bg-white/10 border border-white/10 text-gray-200 text-[10px] md:text-xs font-medium px-1.5 py-0.5 rounded backdrop-blur-md">
+                        <span className="bg-white/10 border border-white/10 text-gray-200 text-xs font-medium px-2 py-0.5 rounded backdrop-blur-md">
                             {activeItem.vod_year || '2025'}
                         </span>
-                        <span className="bg-white/10 border border-white/10 text-gray-200 text-[10px] md:text-xs font-medium px-1.5 py-0.5 rounded backdrop-blur-md">
+                        <span className="bg-white/10 border border-white/10 text-gray-200 text-xs font-medium px-2 py-0.5 rounded backdrop-blur-md">
                             {activeItem.type_name || detail?.type_name || '精选'}
                         </span>
                     </div>
 
-                    {/* Title */}
-                    <h2 className="text-xl md:text-4xl font-black text-white leading-tight drop-shadow-xl tracking-tight line-clamp-2">
-                        {activeItem.vod_name}
-                    </h2>
-
                     {/* Sub-info */}
-                    <div className="text-gray-300 text-[10px] md:text-sm font-medium line-clamp-1 opacity-90">
-                        {detail?.director && <span className="mr-2">导演: {detail.director}</span>}
+                    <div className="text-gray-300 text-xs md:text-base font-medium line-clamp-1 opacity-90">
+                        {detail?.director && <span className="mr-3">导演: {detail.director}</span>}
                         {detail?.actor && <span>主演: {detail.actor}</span>}
                     </div>
 
-                    {/* Description - Hidden on very small screens if too long, or clamp strictly */}
-                    <p className="text-gray-400 text-[10px] md:text-sm leading-relaxed line-clamp-2 md:line-clamp-3 drop-shadow-md max-w-2xl hidden xs:block">
+                    {/* Description - Visible on mobile now as we have space */}
+                    <p className="text-gray-400 text-xs md:text-sm leading-relaxed line-clamp-3 drop-shadow-md max-w-2xl">
                         {detail?.content ? detail.content.replace(/<[^>]+>/g, '') : (activeItem.vod_remarks || "暂无简介...")}
                     </p>
 
                     {/* Action Buttons */}
-                    <div className="pt-1 md:pt-2 flex flex-row gap-2 md:gap-4">
+                    <div className="pt-2 md:pt-4 flex flex-row gap-4">
                         <button 
                             onClick={() => onPlay(activeItem)}
-                            className="bg-white text-black hover:bg-gray-200 text-xs md:text-base font-bold px-4 py-1.5 md:px-8 md:py-3 rounded-full flex items-center gap-1 md:gap-2 transition-all hover:scale-105 shadow-lg whitespace-nowrap"
+                            className="bg-white text-black hover:bg-gray-200 text-sm md:text-base font-bold px-6 py-2 md:px-8 md:py-3 rounded-full flex items-center gap-2 transition-all hover:scale-105 shadow-lg whitespace-nowrap"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 md:w-5 md:h-5">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
                                 <path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" />
                             </svg>
                             <span>播放</span>
                         </button>
                         
                         <button 
-                            className="bg-white/10 text-white hover:bg-white/20 border border-white/10 backdrop-blur-md text-xs md:text-base font-bold px-4 py-1.5 md:px-8 md:py-3 rounded-full flex items-center gap-1 md:gap-2 transition-all hover:scale-105 whitespace-nowrap"
+                            className="bg-white/10 text-white hover:bg-white/20 border border-white/10 backdrop-blur-md text-sm md:text-base font-bold px-6 py-2 md:px-8 md:py-3 rounded-full flex items-center gap-2 transition-all hover:scale-105 whitespace-nowrap"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 md:w-5 md:h-5">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
                             </svg>
                             <span>详情</span>
@@ -185,7 +186,7 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
       </div>
 
       {/* Indicators */}
-      <div className="absolute bottom-3 md:bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2 z-20">
+      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2 z-20">
           {items.map((_, idx) => (
               <button 
                   key={idx}
@@ -353,9 +354,14 @@ const CategoryGrid = ({ category, onItemClick }: { category: string, onItemClick
 };
 
 const PersonProfileCard = ({ person }: { person: PersonDetail }) => {
+    const [expanded, setExpanded] = useState(false);
+    const introText = person.intro || '暂无简介';
+    const isLong = introText.length > 200;
+    const displayIntro = expanded ? introText : (isLong ? introText.slice(0, 200) + '...' : introText);
+
     return (
         <div className="bg-gray-900 border border-white/10 rounded-xl p-6 mb-8 flex flex-col md:flex-row gap-6 animate-fade-in">
-             <div className="w-32 h-44 md:w-40 md:h-56 flex-shrink-0 rounded-lg overflow-hidden shadow-xl mx-auto md:mx-0">
+             <div className="w-32 h-44 md:w-40 md:h-56 flex-shrink-0 rounded-lg overflow-hidden shadow-xl mx-auto md:mx-0 bg-gray-800">
                  <ImageWithFallback src={person.pic} alt={person.name} className="w-full h-full object-cover" />
              </div>
              <div className="flex-1 text-center md:text-left">
@@ -368,9 +374,17 @@ const PersonProfileCard = ({ person }: { person: PersonDetail }) => {
                      {person.constellation && <span>星座: {person.constellation}</span>}
                  </div>
                  <h3 className="text-brand font-bold mb-2 text-sm uppercase tracking-wider">简介</h3>
-                 <p className="text-gray-300 text-sm leading-relaxed line-clamp-4 md:line-clamp-none">
-                     {person.intro || '暂无简介'}
+                 <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-line text-left md:text-left">
+                     {displayIntro}
                  </p>
+                 {isLong && (
+                    <button 
+                        onClick={() => setExpanded(!expanded)}
+                        className="text-brand text-xs mt-2 hover:underline focus:outline-none font-bold"
+                    >
+                        {expanded ? '收起' : '展开全部'}
+                    </button>
+                 )}
              </div>
         </div>
     );
@@ -539,22 +553,44 @@ const App: React.FC = () => {
       };
 
       if (path === '/') {
-          updateSEO('CineStream AI-海量高清电影电视剧动漫综艺在线观看_中国领先的影视聚合平台', 'CineStream AI为您提供最新最热的电影、电视剧、综艺、动漫高清在线观看。包含国产剧、美剧、韩剧、日剧等海量资源，支持智能P2P加速与AI助手互动，致力于为您提供极致的视听体验。', '电影,电视剧,综艺,动漫,视频,在线观看,CineStream AI,美剧,韩剧,4K,高清,免费视频');
+          updateSEO(
+              'CineStream AI-海量高清电影电视剧动漫综艺在线观看_中国领先的影视聚合平台',
+              'CineStream AI为您提供最新最热的电影、电视剧、综艺、动漫高清在线观看。包含国产剧、美剧、韩剧、日剧等海量资源，支持智能P2P加速与AI助手互动，致力于为您提供极致的视听体验。',
+              '电影,电视剧,综艺,动漫,视频,在线观看,CineStream AI,美剧,韩剧,4K,高清,免费视频'
+          );
       } else if (path === '/dianying') {
-          updateSEO('电影频道-2025最新好看的电影大全-高清电影在线观看-CineStream AI', 'CineStream AI电影频道汇集了全球最新最热的大片，涵盖动作、喜剧、科幻、恐怖、爱情等多种类型，提供高清流畅的在线观看体验。', '电影,电影大全,高清电影,免费电影,在线观看,动作片,喜剧片,科幻片,CineStream AI');
+          updateSEO(
+              '电影频道-2025最新好看的电影大全-高清电影在线观看-CineStream AI',
+              'CineStream AI电影频道汇集了全球最新最热的大片，涵盖动作、喜剧、科幻、恐怖、爱情等多种类型，提供高清流畅的在线观看体验。',
+              '电影,电影大全,高清电影,免费电影,在线观看,动作片,喜剧片,科幻片,CineStream AI'
+          );
       } else if (path === '/dianshiju') {
-          updateSEO('电视剧频道-2025最新好看的电视剧大全-高清电视剧在线观看-CineStream AI', 'CineStream AI电视剧频道为您提供最新热播的国产剧、美剧、韩剧、日剧、港台剧等，同步更新，高清免费在线观看。', '电视剧,电视剧大全,高清电视剧,国产剧,美剧,韩剧,日剧,在线观看,CineStream AI');
+          updateSEO(
+              '电视剧频道-2025最新好看的电视剧大全-高清电视剧在线观看-CineStream AI',
+              'CineStream AI电视剧频道为您提供最新热播的国产剧、美剧、韩剧、日剧、港台剧等，同步更新，高清免费在线观看。',
+              '电视剧,电视剧大全,高清电视剧,国产剧,美剧,韩剧,日剧,在线观看,CineStream AI'
+          );
       } else if (path === '/dongman') {
-          updateSEO('动漫频道-2025最新好看的动漫大全-高清动漫在线观看-CineStream AI', 'CineStream AI动漫频道为您提供最新好看的日本动漫、国产动漫、欧美动漫，海量新番连载，高清在线观看。', '动漫,动漫大全,日本动漫,国产动漫,新番,在线观看,CineStream AI');
+          updateSEO(
+              '动漫频道-2025最新好看的动漫大全-高清动漫在线观看-CineStream AI',
+              'CineStream AI动漫频道为您提供最新好看的日本动漫、国产动漫、欧美动漫，海量新番连载，高清在线观看。',
+              '动漫,动漫大全,日本动漫,国产动漫,新番,在线观看,CineStream AI'
+          );
       } else if (path === '/zongyi') {
-          updateSEO('综艺频道-2025最新好看的综艺大全-高清综艺在线观看-CineStream AI', 'CineStream AI综艺频道为您提供最新最热的国内综艺、韩国综艺、欧美综艺等，真人秀、脱口秀应有尽有。', '综艺,综艺大全,韩国综艺,真人秀,在线观看,CineStream AI');
+          updateSEO(
+              '综艺频道-2025最新好看的综艺大全-高清综艺在线观看-CineStream AI',
+              'CineStream AI综艺频道为您提供最新最热的国内综艺、韩国综艺、欧美综艺等，真人秀、脱口秀应有尽有。',
+              '综艺,综艺大全,韩国综艺,真人秀,在线观看,CineStream AI'
+          );
       } else if (path.startsWith('/play/') && currentMovie) {
           const rawContent = currentMovie.vod_content ? currentMovie.vod_content.replace(/<[^>]+>/g, '').slice(0, 150) : '暂无简介';
           const actors = currentMovie.vod_actor || '';
           const director = currentMovie.vod_director || '';
           const type = currentMovie.type_name || '影视';
+          
           let titleSuffix = '';
           const isMovie = type === '电影' || episodes.length <= 1;
+
           if (isMovie) {
               const epTitle = episodes[currentEpisodeIndex]?.title || 'HD';
               const cleanEpTitle = epTitle.replace(/第|集/g, '').replace(/^0+/, ''); 
@@ -567,10 +603,20 @@ const App: React.FC = () => {
                   titleSuffix = ` ${display}`;
               }
           }
-          updateSEO(`《${currentMovie.vod_name}》${titleSuffix}在线观看_全集高清播放_${type}_CineStream AI`, `CineStream AI为您提供《${currentMovie.vod_name}》免费高清在线观看，${currentMovie.vod_name}剧情介绍：${rawContent}...`, `${currentMovie.vod_name},${currentMovie.vod_name}在线观看,${currentMovie.vod_name}全集,${actors},${director},${type},CineStream AI`, currentMovie.vod_pic);
+
+          updateSEO(
+              `《${currentMovie.vod_name}》${titleSuffix}在线观看_全集高清播放_${type}_CineStream AI`,
+              `CineStream AI为您提供《${currentMovie.vod_name}》免费高清在线观看，${currentMovie.vod_name}剧情介绍：${rawContent}...`,
+              `${currentMovie.vod_name},${currentMovie.vod_name}在线观看,${currentMovie.vod_name}全集,${actors},${director},${type},CineStream AI`,
+              currentMovie.vod_pic
+          );
       } else if (path.startsWith('/sousuo')) {
            const title = searchQuery ? `${searchQuery}-搜索结果-CineStream AI` : '搜索中心-CineStream AI';
-           updateSEO(title, 'CineStream AI全网搜索，找到你想看的每一部影视作品。', '搜索,视频搜索,影视搜索,CineStream AI');
+           updateSEO(
+              title,
+              'CineStream AI全网搜索，找到你想看的每一部影视作品。',
+              '搜索,视频搜索,影视搜索,CineStream AI'
+           );
       }
   }, [location.pathname, currentMovie, searchQuery, currentEpisodeIndex, episodes]);
 
@@ -1258,30 +1304,22 @@ const App: React.FC = () => {
                                           {searchResults.map((item) => (
                                               <div key={item.vod_id} onClick={() => handleItemClick(item)} className="group cursor-pointer bg-gray-900 rounded-xl overflow-hidden aspect-[2/3] relative border border-white/5 hover:border-brand/50 transition-all duration-300 hover:-translate-y-1 shadow-lg hover:shadow-brand/10">
                                                   <ImageWithFallback src={item.vod_pic || ''} alt={item.vod_name} searchKeyword={item.vod_name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                                                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/90 to-transparent p-3 pt-16">
+                                                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/80 to-transparent p-3 pt-12">
                                                       <h4 className="text-sm font-bold text-white truncate group-hover:text-brand transition-colors">{item.vod_name}</h4>
-                                                      <div className="flex justify-between items-center mt-1 text-xs text-gray-400 mb-2">
+                                                      <div className="flex justify-between items-center mt-1 text-xs text-gray-400">
                                                           <span>{item.vod_year || 'N/A'}</span>
                                                           <span className="bg-white/10 px-1.5 py-0.5 rounded text-[10px]">{item.type_name || '影视'}</span>
                                                       </div>
-                                                      
-                                                      {/* Visible View Details Button for Celebrities */}
-                                                      {item.type_name === 'celebrity' && (
-                                                          <button 
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleItemClick(item);
-                                                            }}
-                                                            className="w-full bg-brand text-black text-xs font-bold py-1.5 rounded flex items-center justify-center gap-1 hover:bg-brand-hover transition-colors"
-                                                          >
-                                                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
-                                                                  <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
-                                                                  <path fillRule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
-                                                              </svg>
-                                                              查看详细资料
-                                                          </button>
-                                                      )}
                                                   </div>
+                                                  
+                                                  {/* Special Overlay for Celebrity Items */}
+                                                  {item.type_name === 'celebrity' && (
+                                                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                                          <button className="bg-brand text-black font-bold px-4 py-2 rounded-full transform scale-90 group-hover:scale-100 transition-transform">
+                                                              查看资料
+                                                          </button>
+                                                      </div>
+                                                  )}
                                               </div>
                                           ))}
                                       </div>
