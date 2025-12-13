@@ -1,5 +1,5 @@
 {
   "name": "CineStream AI",
-  "description": "A high-definition video streaming platform with intelligent P2P acceleration and Gemini AI integration.",
+  "description": "High-definition video streaming with P2P acceleration.",
   "requestFramePermissions": []
 }

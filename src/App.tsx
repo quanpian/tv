@@ -126,7 +126,7 @@ const HeroBanner = ({ items, onPlay }: { items: VodItem[], onPlay: (item: VodIte
                     </h2>
 
                     <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
-                        <span className="bg-brand text-black text-xs font-black px-2 py-0.5 rounded uppercase tracking-wider shadow-lg shadow-brand/20">
+                        <span className="bg-[#ffb400] text-black text-xs font-black px-2 py-0.5 rounded uppercase tracking-wider shadow-lg shadow-brand/20">
                             {detail?.score || activeItem.vod_score || 'HOT'}
                         </span>
                         <span className="bg-white/10 border border-white/10 text-gray-200 text-xs font-medium px-2 py-0.5 rounded backdrop-blur-md">
@@ -220,7 +220,7 @@ const HorizontalSection = ({ title, items, id, onItemClick, onItemContextMenu }:
                                 <ImageWithFallback src={item.vod_pic} alt={item.vod_name} className="w-full h-full object-cover transform group-hover/card:scale-105 transition-transform duration-500" />
                                 <div className="absolute inset-0 bg-black/0 group-hover/card:bg-black/20 transition-colors"></div>
                                 {(item as any).vod_remarks && <div className="absolute top-1 right-1 bg-black/60 text-[10px] text-white px-1.5 py-0.5 rounded backdrop-blur-sm">{(item as any).vod_remarks}</div>}
-                                {(item as any).vod_score && <div className="absolute bottom-1 right-1 text-brand font-bold text-xs drop-shadow-md">{(item as any).vod_score}</div>}
+                                {(item as any).vod_score && <div className="absolute bottom-1 right-1 text-[#ffb400] font-bold text-xs drop-shadow-md">{(item as any).vod_score}</div>}
                                 {(item as HistoryItem).episode_name && (
                                      <div className="absolute bottom-0 left-0 right-0 bg-brand/90 text-black text-[10px] font-bold px-2 py-1 text-center">
                                          上次看到: {(item as HistoryItem).episode_name}
@@ -300,7 +300,7 @@ const CategoryGrid = ({ category, onItemClick }: { category: string, onItemClick
                          <div key={item.vod_id} onClick={() => onItemClick(item)} className="group cursor-pointer">
                              <div className="aspect-[2/3] bg-gray-900 rounded-xl overflow-hidden relative shadow-lg border border-white/5 group-hover:border-brand/50 transition-all duration-300 hover:-translate-y-1">
                                  <ImageWithFallback src={item.vod_pic} alt={item.vod_name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                                 {item.vod_score && <div className="absolute top-1 right-1 bg-brand text-black text-[10px] font-bold px-1.5 py-0.5 rounded">{item.vod_score}</div>}
+                                 {item.vod_score && <div className="absolute top-1 right-1 bg-[#ffb400] text-black text-[10px] font-bold px-1.5 py-0.5 rounded">{item.vod_score}</div>}
                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
                              </div>
                              <h4 className="mt-2 text-sm text-gray-200 font-bold truncate group-hover:text-brand transition-colors">{item.vod_name}</h4>
