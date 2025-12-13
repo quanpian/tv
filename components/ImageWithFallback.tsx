@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { getDoubanPoster } from '../services/vodService';
 
@@ -26,16 +27,11 @@ const ImageWithFallback: React.FC<ImageProps> = ({ src, alt, className, searchKe
     if (!url || BAD_IMAGE_PATTERNS.some(p => url.includes(p))) {
       if (searchKeyword) {
           setImgSrc(FALLBACK_IMG);
-          setRetryStage(2); // Skip direct/proxy attempt, go straight to smart search
+          setRetryStage(2);
           getDoubanPoster(searchKeyword).then(newUrl => {
               if (newUrl) {
-                  // New URL found via search. If it's Douban, try direct first.
-                  if (newUrl.includes('doubanio.com')) {
-                      setImgSrc(newUrl);
-                  } else {
-                      const proxyUrl = `${PROXY_URL}${encodeURIComponent(newUrl)}`;
-                      setImgSrc(proxyUrl);
-                  }
+                  const proxyUrl = `${PROXY_URL}${encodeURIComponent(newUrl)}`;
+                  setImgSrc(proxyUrl);
               } else {
                   setRetryStage(3);
               }
@@ -61,17 +57,11 @@ const ImageWithFallback: React.FC<ImageProps> = ({ src, alt, className, searchKe
         return;
     }
 
-    // STRATEGY: 
-    // 1. If URL is Douban, try DIRECT load first (relying on meta no-referrer).
-    // 2. If not Douban, use Proxy.
-    if (url.includes('doubanio.com')) {
-        setImgSrc(url);
-        setRetryStage(1); 
-    } else {
-        const proxyUrl = `${PROXY_URL}${encodeURIComponent(url)}`;
-        setImgSrc(proxyUrl);
-        setRetryStage(1);
-    }
+    // STRATEGY: Use your custom proxy for everything to be safe
+    // Direct requests often fail in restricted environments or due to mixed content/CORS.
+    const proxyUrl = `${PROXY_URL}${encodeURIComponent(url)}`;
+    setImgSrc(proxyUrl);
+    setRetryStage(1);
 
   }, [src, searchKeyword]);
 
@@ -84,43 +74,22 @@ const ImageWithFallback: React.FC<ImageProps> = ({ src, alt, className, searchKe
         localStorage.removeItem(CACHE_PREFIX + originalUrl);
     }
 
-    // Stage 1 Failed (Direct Douban or Proxy Load)
-    if (retryStage === 1) {
-        // If it was a direct Douban load failure, try Proxy
-        if (imgSrc === originalUrl && originalUrl.includes('doubanio.com')) {
-             const proxyUrl = `${PROXY_URL}${encodeURIComponent(originalUrl)}`;
-             setImgSrc(proxyUrl);
-             // We remain in stage 1 effectively, just retrying with proxy. 
-             // If this proxy attempt fails, handleError will trigger again.
-             return;
-        }
-        
-        // If proxy failed (or we just tried proxy for non-douban), try smart search
-        if (searchKeyword) {
-            setRetryStage(2);
-            getDoubanPoster(searchKeyword).then(newUrl => {
-                if (newUrl) {
-                    if (newUrl.includes('doubanio.com')) {
-                        setImgSrc(newUrl); // Try direct for new found URL
-                    } else {
-                        const proxyUrl = `${PROXY_URL}${encodeURIComponent(newUrl)}`;
-                        setImgSrc(proxyUrl);
-                    }
-                } else {
-                    setImgSrc(FALLBACK_IMG);
-                    setRetryStage(3);
-                }
-            });
-        } else {
-            setImgSrc(FALLBACK_IMG);
-            setRetryStage(3);
-        }
-    } 
-    // Stage 2 Failed (Smart Search Result Failed)
-    else if (retryStage === 2) {
+    // If initial load via proxy failed, it's likely a bad URL or timeout.
+    // Try smart search as fallback.
+    if (retryStage === 1 && searchKeyword) {
+        setRetryStage(2);
+        getDoubanPoster(searchKeyword).then(newUrl => {
+            if (newUrl) {
+                const proxyUrl = `${PROXY_URL}${encodeURIComponent(newUrl)}`;
+                setImgSrc(proxyUrl);
+            } else {
+                setImgSrc(FALLBACK_IMG);
+                setRetryStage(3);
+            }
+        });
+    } else {
         if (imgSrc !== FALLBACK_IMG) {
             setImgSrc(FALLBACK_IMG);
-            setRetryStage(3);
         }
     }
   };
@@ -131,8 +100,6 @@ const ImageWithFallback: React.FC<ImageProps> = ({ src, alt, className, searchKe
           if (originalUrl.startsWith('//')) originalUrl = 'https:' + originalUrl;
           try {
               if (originalUrl && !BAD_IMAGE_PATTERNS.some(p => originalUrl.includes(p))) {
-                  // Only cache if successful. Note: We cache the *working* imgSrc (which might be proxy) 
-                  // mapped to originalUrl key.
                   localStorage.setItem(CACHE_PREFIX + originalUrl, imgSrc);
               }
           } catch (e) {}

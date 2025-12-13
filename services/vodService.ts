@@ -1,7 +1,9 @@
+
 import { Episode, VodDetail, ApiResponse, ActorItem, RecommendationItem, VodItem, VodSource, PlaySource, HistoryItem, PersonDetail } from '../types';
 import { createClient } from '@supabase/supabase-js';
 
 // --- SUPABASE SETUP ---
+// Try import.meta.env (Vite standard) first, then fallback to process.env (legacy/polyfill)
 const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
 const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_KEY || process.env.VITE_SUPABASE_KEY || '';
 
@@ -199,8 +201,10 @@ export const toggleVodSource = async (id: string) => {
 
 export const resetVodSources = async () => {
     localStorage.removeItem(SOURCES_KEY);
+    // Note: Resetting local doesn't wipe Cloud DB to prevent accidental data loss for all users.
+    // Use delete for that.
     if (supabase) {
-        await initVodSources(); 
+        await initVodSources(); // Re-fetch from cloud if available
         return getVodSources();
     }
     return [DEFAULT_SOURCE];
@@ -267,17 +271,20 @@ const fetchWithProxy = async (targetUrl: string, options: RequestInit = {}): Pro
  * Helper: Fetch data from a CMS source with robust fallback (Direct -> Proxy) and force JSON
  */
 const fetchCmsData = async (baseUrl: string, params: URLSearchParams): Promise<any> => {
+    // FORCE JSON output. Many CMS default to XML otherwise.
     params.set('out', 'json');
     const url = `${baseUrl}?${params.toString()}`;
 
     // 1. Try Direct Fetch
     try {
-        const res = await fetchWithTimeout(url, {}, 5000); 
+        const res = await fetchWithTimeout(url, {}, 5000); // 5s timeout for direct
         if (res.ok) {
             const text = await res.text();
             try { return JSON.parse(text); } catch (e) { /* Not JSON */ }
         }
-    } catch (e) {}
+    } catch (e) {
+        // Direct failed, ignore
+    }
 
     // 2. Try Proxy Fetch
     try {
@@ -312,12 +319,15 @@ const fetchDoubanJson = async (type: string, tag: string, limit = 12, sort = 're
                 vod_year: '2024'
             }));
         }
-    } catch (e) {}
+    } catch (e) {
+        // console.error("Douban API fetch failed", e);
+    }
     
     return [];
 };
 
 export const getHomeSections = async () => {
+    // 1. Try Cache First
     try {
         const cached = localStorage.getItem(HOME_CACHE_KEY);
         if (cached) {
@@ -330,6 +340,7 @@ export const getHomeSections = async () => {
         }
     } catch (e) {}
 
+    // 2. Fetch if no cache
     const safeFetch = async (fn: Promise<VodItem[]>) => {
         try { 
             const res = await fn; 
@@ -347,6 +358,7 @@ export const getHomeSections = async () => {
     
     const isCriticalEmpty = movies.length === 0 && series.length === 0;
     
+    // 3. Save Cache (Only if we have real data)
     if (!isCriticalEmpty) {
         try {
             const cacheData = { movies, series, shortDrama, anime, variety };
@@ -426,6 +438,9 @@ export const fetchCategoryItems = async (
 
 // --- SEARCH LOGIC ---
 
+/**
+ * Search directly from Douban (for UI Display)
+ */
 export const searchDouban = async (keyword: string): Promise<VodItem[]> => {
     const searchUrl = `https://movie.douban.com/j/subject_suggest?q=${encodeURIComponent(keyword)}`;
     try {
@@ -435,32 +450,42 @@ export const searchDouban = async (keyword: string): Promise<VodItem[]> => {
                 vod_id: item.id,
                 vod_name: item.title,
                 vod_pic: item.img ? item.img.replace(/s_ratio_poster|m(?=\/public)/, 'l') : '',
-                vod_score: item.year,
-                type_name: item.type === 'celebrity' ? 'celebrity' : (item.type || '影视'),
+                vod_score: item.year, // Douban suggest uses year usually, no score
+                type_name: item.type === 'celebrity' ? 'celebrity' : (item.type || '影视'), // Keep celebrity type
                 vod_year: item.year,
                 source: 'douban'
             }));
         }
-    } catch(e) {}
+    } catch(e) {
+        console.warn('Douban search failed', e);
+    }
     return [];
 };
 
+/**
+ * Search ALL configured CMS resources simultaneously
+ */
 const searchAllCmsResources = async (keyword: string): Promise<VodItem[]> => {
     const sources = getVodSources().filter(s => s.active);
+    
+    // We use ac=detail to get as much info as possible (pics, remarks)
     const params = new URLSearchParams({ ac: 'detail', wd: keyword });
 
     const promises = sources.map(async (source) => {
         try {
             const data = await fetchCmsData(source.api, params);
+            
             if (data && (data.list || data.code === 1)) {
                 const list = data.list || [];
                  return list.map((item: any) => {
+                    // Check for bad images
                     let pic = item.vod_pic || '';
                     if (pic.includes('mac_default') || pic.includes('nopic') || pic.includes('no_pic')) {
                         pic = '';
                     }
+
                     return {
-                        vod_id: `cms_${item.vod_id}`,
+                        vod_id: `cms_${item.vod_id}`, // Prefix ID to avoid collision with Douban
                         vod_name: item.vod_name,
                         vod_pic: pic,
                         vod_remarks: item.vod_remarks,
@@ -468,11 +493,13 @@ const searchAllCmsResources = async (keyword: string): Promise<VodItem[]> => {
                         vod_year: item.vod_year,
                         vod_score: item.vod_score,
                         source: 'cms',
-                        api_url: source.api
+                        api_url: source.api // Crucial: Link this item back to its specific source API
                     };
                 });
             }
-        } catch(e) {}
+        } catch(e) {
+            // console.warn(`Search failed for ${source.name}`, e);
+        }
         return [];
     });
 
@@ -480,7 +507,11 @@ const searchAllCmsResources = async (keyword: string): Promise<VodItem[]> => {
     return results.flat();
 };
 
+/**
+ * AGGREGATED SEARCH: Combines Douban (Metadata) + CMS (Resources)
+ */
 export const getAggregatedSearch = async (keyword: string): Promise<VodItem[]> => {
+    // Run in parallel
     const [doubanResults, cmsResults] = await Promise.all([
         searchDouban(keyword),
         searchAllCmsResources(keyword)
@@ -490,9 +521,15 @@ export const getAggregatedSearch = async (keyword: string): Promise<VodItem[]> =
     const existingNames = new Set(doubanResults.map(i => i.vod_name));
 
     cmsResults.forEach((item: VodItem) => {
+        // If the CMS item name is NOT already in the Douban results, add it.
+        // This ensures we show items that are unique to the resource sites (e.g. niche content, "写真").
+        // We trim spaces to ensure loose matching
         const normalizedItemName = item.vod_name.trim();
+        
         let exists = false;
+        // Check exact match
         if (existingNames.has(normalizedItemName)) exists = true;
+        
         if (!exists) {
              finalResults.push(item);
              existingNames.add(normalizedItemName);
@@ -511,6 +548,7 @@ export const fetchPersonDetail = async (id: string | number): Promise<PersonDeta
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
         
+        // Parse Profile
         const name = doc.querySelector('#content h1')?.textContent?.trim() || 'Unknown';
         const picRaw = doc.querySelector('#headline .pic img')?.getAttribute('src') || '';
         const pic = picRaw.replace(/s_ratio_poster|m(?=\/public)/, 'l');
@@ -527,27 +565,9 @@ export const fetchPersonDetail = async (id: string | number): Promise<PersonDeta
             if (text.includes('职业')) role = text.replace('职业:', '').trim();
         });
         
-        let intro = '';
-        const introContainer = doc.querySelector('#intro .bd');
-        if (introContainer) {
-            const fullSpan = introContainer.querySelector('span.all.hidden');
-            if (fullSpan) {
-                let html = fullSpan.innerHTML;
-                html = html.replace(/<br\s*\/?>/gi, '\n');
-                const tmp = document.createElement('div');
-                tmp.innerHTML = html;
-                intro = tmp.textContent?.trim() || '';
-            } else {
-                let html = introContainer.innerHTML;
-                html = html.replace(/<br\s*\/?>/gi, '\n');
-                const tmp = document.createElement('div');
-                tmp.innerHTML = html;
-                let text = tmp.textContent?.trim() || '';
-                text = text.replace(/\(展开\)$/, '').trim();
-                intro = text;
-            }
-        }
+        const intro = doc.querySelector('#intro .bd')?.textContent?.trim() || '';
 
+        // Parse Works (Best & Recent)
         let works: VodItem[] = [];
         
         const parseWorkLi = (li: Element) => {
@@ -558,8 +578,6 @@ export const fetchPersonDetail = async (id: string | number): Promise<PersonDeta
             const subjectId = link.match(/subject\/(\d+)/)?.[1];
             const picUrl = (img?.getAttribute('src') || '').replace(/s_ratio_poster|m(?=\/public)/, 'l');
             const rating = li.querySelector('.rating')?.textContent?.trim() || '';
-            const yearMatch = li.textContent?.match(/(\d{4})/);
-            const year = yearMatch ? yearMatch[1] : '';
             
             if (subjectId && title) {
                  return {
@@ -569,12 +587,13 @@ export const fetchPersonDetail = async (id: string | number): Promise<PersonDeta
                     vod_score: rating,
                     type_name: '影视',
                     source: 'douban',
-                    vod_year: year
+                    vod_year: ''
                  } as VodItem;
             }
             return null;
         };
         
+        // Merge Best and Recent
         const bestWorks = doc.querySelectorAll('#best_works .bd ul li');
         const recentWorks = doc.querySelectorAll('#recent_movies .bd ul li');
         
@@ -590,43 +609,86 @@ export const fetchPersonDetail = async (id: string | number): Promise<PersonDeta
             }
         });
 
-        return { id: String(id), name, pic, gender, constellation, birthdate, birthplace, role, intro, works };
+        return {
+            id: String(id),
+            name,
+            pic,
+            gender,
+            constellation,
+            birthdate,
+            birthplace,
+            role,
+            intro,
+            works
+        };
     } catch (e) {
         console.warn('Fetch person failed', e);
         return null;
     }
 };
 
+/**
+ * Search from CMS Resource Sites (for Playback Sources)
+ * UPDATED: Now queries ALL active sources in parallel and returns aggregated results.
+ * Using fetchCmsData for robust JSON fetching.
+ */
 export const searchCms = async (keyword: string, page = 1): Promise<ApiResponse> => {
   const sources = getVodSources().filter(s => s.active);
-  const params = new URLSearchParams({ ac: 'detail', wd: keyword, pg: page.toString() });
+  const params = new URLSearchParams({
+      ac: 'detail',
+      wd: keyword,
+      pg: page.toString(),
+  });
 
+  // Query all sources in parallel
   const promises = sources.map(async (source) => {
       try {
           const data = await fetchCmsData(source.api, params);
           if (data && (data.code === 1 || (Array.isArray(data.list) && data.list.length > 0))) {
-              const list = (data.list || []).map((item: any) => ({ ...item, api_url: source.api }));
+              const list = (data.list || []).map((item: any) => ({
+                  ...item,
+                  api_url: source.api 
+              }));
               return list;
           }
-      } catch(e) {}
+      } catch(e) {
+          // console.warn(`Search failed on source ${source.name}`, e);
+      }
       return [];
   });
 
   const results = await Promise.all(promises);
+  // Flatten to get a single list of all items from all sources
   const allList = results.flat();
 
-  return { code: 1, msg: "Success", page: page, pagecount: 1, limit: "20", total: allList.length, list: allList };
+  // Return a synthetic response valid for the app's logic
+  return { 
+      code: 1, 
+      msg: "Success", 
+      page: page, 
+      pagecount: 1, 
+      limit: "20", 
+      total: allList.length, 
+      list: allList 
+  };
 };
 
 export const getMovieDetail = async (id: number | string, apiUrl?: string): Promise<VodDetail | null> => {
-  const params = new URLSearchParams({ ac: 'detail', ids: id.toString() });
-  const sourcesToTry = apiUrl ? [{ api: apiUrl, name: 'Target' }] : getVodSources().filter(s => s.active);
+  const params = new URLSearchParams({
+      ac: 'detail',
+      ids: id.toString()
+  });
+  
+  const sourcesToTry = apiUrl 
+      ? [{ api: apiUrl, name: 'Target' }] 
+      : getVodSources().filter(s => s.active);
 
   for (const source of sourcesToTry) {
       try {
           const data = await fetchCmsData(source.api, params);
           if (data && data.list && data.list.length > 0) {
               const detail = data.list[0] as VodDetail;
+              // Ensure we carry over the API URL to match the source later
               detail.api_url = source.api; 
               return detail;
           }
@@ -635,8 +697,12 @@ export const getMovieDetail = async (id: number | string, apiUrl?: string): Prom
   return null;
 };
 
+/**
+ * Helper: Find Detail in a specific source by keyword
+ */
 const fetchDetailFromSourceByKeyword = async (source: VodSource, keyword: string): Promise<VodDetail | null> => {
     try {
+        // 1. Try ac=detail&wd=keyword
         const params = new URLSearchParams({ ac: 'detail', wd: keyword });
         let data = await fetchCmsData(source.api, params);
         
@@ -648,14 +714,18 @@ const fetchDetailFromSourceByKeyword = async (source: VodSource, keyword: string
              }
         }
 
+        // 2. Fallback: ac=list&wd=keyword -> get ID -> ac=detail
+        // Some APIs behave differently for 'list' vs 'detail'
         params.set('ac', 'list');
         data = await fetchCmsData(source.api, params);
         
         if (data && data.list && data.list.length > 0) {
             const exact = data.list.find((v: any) => v.vod_name === keyword);
             if (exact) {
+                 // Fetch full detail for this ID
                  const detailParams = new URLSearchParams({ ac: 'detail', ids: exact.vod_id });
                  const detailData = await fetchCmsData(source.api, detailParams);
+                 
                  if (detailData && detailData.list && detailData.list.length > 0) {
                      const detail = detailData.list[0];
                      detail.api_url = source.api;
@@ -663,18 +733,28 @@ const fetchDetailFromSourceByKeyword = async (source: VodSource, keyword: string
                  }
             }
         }
+
     } catch(e) {}
     return null;
 }
 
+/**
+ * NEW: Aggregated Details Fetcher
+ * Fetches main detail + searches all other active sources for playback lines
+ */
 export const getAggregatedMovieDetail = async (id: number | string, apiUrl?: string): Promise<{ main: VodDetail, alternatives: VodDetail[] } | null> => {
+    // 1. Fetch Main Detail (Metadata + its sources)
+    // Strip "cms_" prefix if present to get real ID
     const realId = String(id).replace('cms_', '');
+    
     const mainDetail = await getMovieDetail(realId, apiUrl);
     if (!mainDetail) return null;
 
     const sources = getVodSources().filter(s => s.active);
+    // Filter out the source we just fetched from
     const otherSources = sources.filter(s => s.api !== mainDetail.api_url);
 
+    // 2. Search other sources in parallel
     const promises = otherSources.map(s => fetchDetailFromSourceByKeyword(s, mainDetail.vod_name));
     const results = await Promise.all(promises);
     
@@ -683,15 +763,8 @@ export const getAggregatedMovieDetail = async (id: number | string, apiUrl?: str
     return { main: mainDetail, alternatives };
 };
 
-export const getAlternativeVodDetails = async (mainDetail: VodDetail): Promise<VodDetail[]> => {
-    const sources = getVodSources().filter(s => s.active);
-    const otherSources = sources.filter(s => s.api !== mainDetail.api_url);
-    const promises = otherSources.map(s => fetchDetailFromSourceByKeyword(s, mainDetail.vod_name));
-    const results = await Promise.all(promises);
-    return results.filter((r): r is VodDetail => r !== null);
-};
-
 export const getDoubanPoster = async (keyword: string): Promise<string | null> => {
+    // 1. Try Suggest API
     try {
         const suggestUrl = `https://movie.douban.com/j/subject_suggest?q=${encodeURIComponent(keyword)}`;
         const data = await fetchWithProxy(suggestUrl);
@@ -700,6 +773,7 @@ export const getDoubanPoster = async (keyword: string): Promise<string | null> =
         }
     } catch(e) {}
 
+    // 2. Fallback to Search Subjects API (Broader search)
     try {
         const searchUrl = `https://movie.douban.com/j/search_subjects?type=movie&tag=&q=${encodeURIComponent(keyword)}&page_limit=1&page_start=0`;
         const data = await fetchWithProxy(searchUrl);
@@ -711,6 +785,9 @@ export const getDoubanPoster = async (keyword: string): Promise<string | null> =
     return null; 
 };
 
+/**
+ * UPDATED: Accepts array of details (main + alternatives)
+ */
 export const parseAllSources = (input: VodDetail | VodDetail[]): PlaySource[] => {
     const details = Array.isArray(input) ? input : [input];
     const allSources: PlaySource[] = [];
@@ -720,6 +797,8 @@ export const parseAllSources = (input: VodDetail | VodDetail[]): PlaySource[] =>
 
         const fromArray = detail.vod_play_from.split('$$$');
         const urlArray = detail.vod_play_url.split('$$$');
+        
+        // Resolve Source Name
         let sourceName = '默认源';
 
         if (detail.api_url) {
@@ -736,6 +815,7 @@ export const parseAllSources = (input: VodDetail | VodDetail[]): PlaySource[] =>
             const urlStr = urlArray[idx];
             if (!urlStr) return;
 
+            // STRICT FILTER: Only allow M3U8 formats
             const lowerCode = code.toLowerCase();
             const lowerUrl = urlStr.toLowerCase();
             const isM3u8 = lowerCode.includes('m3u8') || lowerUrl.includes('.m3u8');
@@ -749,7 +829,15 @@ export const parseAllSources = (input: VodDetail | VodDetail[]): PlaySource[] =>
                 let title = parts.length > 1 ? parts[0] : `第 ${epIdx + 1} 集`;
                 const url = parts.length > 1 ? parts[1] : parts[0];
                 
-                if (title === code || title.toLowerCase() === 'm3u8' || title.toLowerCase() === 'mp4' || title === sourceName || title.startsWith('http') || title.startsWith('//')) {
+                // Clean up episode titles
+                if (
+                    title === code || 
+                    title.toLowerCase() === 'm3u8' || 
+                    title.toLowerCase() === 'mp4' || 
+                    title === sourceName ||
+                    title.startsWith('http') ||
+                    title.startsWith('//')
+                ) {
                     title = `第 ${epIdx + 1} 集`;
                 }
 
@@ -761,9 +849,14 @@ export const parseAllSources = (input: VodDetail | VodDetail[]): PlaySource[] =>
             
             if (episodes.length > 0) {
                 let finalName = sourceName;
+                
+                // OPTIMIZED NAMING:
+                // Only append internal code (like dyttm3u8) if a source with this name ALREADY exists.
+                // This keeps the UI clean (e.g., just "官方源" or "如意资源") unless strictly necessary.
                 if (allSources.some(s => s.name === finalName)) {
                      finalName = `${sourceName} (${code})`;
                 }
+
                 allSources.push({ name: finalName, episodes });
             }
         });
@@ -772,14 +865,23 @@ export const parseAllSources = (input: VodDetail | VodDetail[]): PlaySource[] =>
     return allSources;
 }
 
+export const parseEpisodes = (urlStr: string, fromStr: string): Episode[] => {
+  const dummyDetail = { vod_play_url: urlStr, vod_play_from: fromStr } as VodDetail;
+  const sources = parseAllSources(dummyDetail);
+  return sources[0]?.episodes || [];
+};
+
 export const enrichVodDetail = async (detail: VodDetail): Promise<Partial<VodDetail> | null> => {
     try {
         const doubanData = await fetchDoubanData(detail.vod_name, detail.vod_douban_id);
         if (doubanData) {
             const updates: Partial<VodDetail> = {};
+            // Basic Info
             if (doubanData.score) updates.vod_score = doubanData.score;
             if (doubanData.pic) updates.vod_pic = doubanData.pic;
             if (doubanData.content) updates.vod_content = doubanData.content;
+            
+            // Comprehensive Details - All fields requested
             if (doubanData.director) updates.vod_director = doubanData.director;
             if (doubanData.actor) updates.vod_actor = doubanData.actor;
             if (doubanData.writer) updates.vod_writer = doubanData.writer;
@@ -791,8 +893,11 @@ export const enrichVodDetail = async (detail: VodDetail): Promise<Partial<VodDet
             if (doubanData.area) updates.vod_area = doubanData.area;
             if (doubanData.lang) updates.vod_lang = doubanData.lang;
             if (doubanData.tag) updates.type_name = doubanData.tag;
+            
+            // Extended Data
             if (doubanData.recs) updates.vod_recs = doubanData.recs;
             if (doubanData.actorsExtended) updates.vod_actors_extended = doubanData.actorsExtended;
+            
             return updates;
         }
     } catch (e) { }
@@ -814,23 +919,27 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
     const html = await fetchWithProxy(pageUrl);
     if (!html || typeof html !== 'string') return null;
     
+    // Robust Parsing using DOMParser
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
     const result: any = { doubanId: String(targetId) };
 
+    // Helper to get text from #info
     const getInfoField = (label: string): string => {
          const plSpan = Array.from(doc.querySelectorAll('#info span.pl')).find(el => el.textContent?.includes(label));
          if (!plSpan) return '';
+         
          let next = plSpan.nextElementSibling;
          if (next && next.classList.contains('attrs')) {
              return next.textContent?.trim() || '';
          }
+
          let content = '';
          let curr = plSpan.nextSibling;
          while(curr) {
              if (curr.nodeName === 'BR') break;
-             if (curr.nodeType === 1 && (curr as Element).classList.contains('pl')) break;
+             if (curr.nodeType === 1 && (curr as Element).classList.contains('pl')) break; // Next label
              content += curr.textContent;
              curr = curr.nextSibling;
          }
@@ -849,6 +958,7 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
     result.alias = getInfoField('又名');
     result.imdb = getInfoField('IMDb');
 
+    // Synopsis
     const summary = doc.querySelector('span[property="v:summary"]');
     const hiddenSummary = doc.querySelector('span.all.hidden');
     if (hiddenSummary) {
@@ -857,12 +967,15 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
         result.content = summary.textContent?.trim().replace(/<br\s*\/?>/gi, '\n').replace(/\s+/g, ' ');
     }
 
+    // Score
     const rating = doc.querySelector('strong[property="v:average"]');
     if (rating) result.score = rating.textContent?.trim();
 
+    // Picture
     const img = doc.querySelector('#mainpic img');
     if (img) result.pic = img.getAttribute('src');
 
+    // Visual Cast List (#celebrities)
     const celebrityItems = doc.querySelectorAll('#celebrities .celebrity');
     if (celebrityItems.length > 0) {
         result.actorsExtended = Array.from(celebrityItems).slice(0, 10).map(el => {
@@ -870,13 +983,16 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
             const role = el.querySelector('.role')?.textContent?.trim() || '';
             let pic = el.querySelector('.avatar')?.getAttribute('style')?.match(/url\((.*?)\)/)?.[1] || '';
             if (!pic) pic = el.querySelector('img')?.getAttribute('src') || '';
+            
             if (pic && !pic.startsWith('http')) {
                 if (pic.startsWith('//')) pic = 'https:' + pic;
             }
+            
             return { name, role, pic: pic.replace(/s_ratio_poster|m(?=\/public)/, 'l') };
         }).filter(a => a.name);
     }
 
+    // Recommendations
     const recItems = doc.querySelectorAll('#recommendations dl, .recommendations-bd dl');
     if (recItems.length > 0) {
         result.recs = Array.from(recItems).slice(0, 10).map(el => {
