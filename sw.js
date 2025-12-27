@@ -1,7 +1,13 @@
 
-const CACHE_NAME = 'cinestream-v23';
-const OFFLINE_URL = '/index.html';
+const CACHE_VERSION = 'v24';
+const CACHE_NAMES = {
+  static: `static-${CACHE_VERSION}`,
+  images: `images-${CACHE_VERSION}`,
+  api: `api-${CACHE_VERSION}`,
+  video: `video-${CACHE_VERSION}`
+};
 
+const OFFLINE_URL = '/index.html';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -9,18 +15,30 @@ const STATIC_ASSETS = [
   '/manifest.json'
 ];
 
-// 需要长期缓存的静态域
-const LONG_TERM_DOMAINS = [
+// Domains for long-term asset caching
+const ASSET_DOMAINS = [
   'aistudiocdn.com',
   'cdn.tailwindcss.com',
   'images.weserv.nl',
   'doubanio.com'
 ];
 
+/**
+ * Utility to limit cache size
+ */
+const limitCacheSize = async (cacheName, maxItems) => {
+  const cache = await caches.open(cacheName);
+  const keys = await cache.keys();
+  if (keys.length > maxItems) {
+    await cache.delete(keys[0]);
+    await limitCacheSize(cacheName, maxItems);
+  }
+};
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log('[PWA] Static assets pre-cached');
+    caches.open(CACHE_NAMES.static).then((cache) => {
+      console.log('[PWA] Pre-caching static core');
       return cache.addAll(STATIC_ASSETS);
     })
   );
@@ -29,12 +47,12 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
+    caches.keys().then((keys) => {
       return Promise.all(
-        cacheNames.map((name) => {
-          if (name !== CACHE_NAME) {
-            console.log('[PWA] Deleting old cache:', name);
-            return caches.delete(name);
+        keys.map((key) => {
+          if (!Object.values(CACHE_NAMES).includes(key)) {
+            console.log('[PWA] Purging obsolete cache:', key);
+            return caches.delete(key);
           }
         })
       );
@@ -43,14 +61,12 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// 排除不需要缓存的动态请求
 const isIgnored = (url) => {
   return (
-    url.includes('.ts') || 
     url.includes('googleads') ||
     url.includes('doubleclick') ||
     url.includes('/match') ||
-    url.includes('laibo123.dpdns.org/5573108/api/v2/comment')
+    url.includes('api/v2/comment')
   );
 };
 
@@ -60,7 +76,7 @@ self.addEventListener('fetch', (event) => {
 
   if (request.method !== 'GET' || isIgnored(url.href)) return;
 
-  // 1. 导航请求：优先网络，失败后返回离线页
+  // 1. Navigation Strategy: Network-First with Offline Fallback
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request).catch(() => caches.match(OFFLINE_URL))
@@ -68,29 +84,81 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. 核心静态资源/CDN：缓存优先
-  const isCdn = LONG_TERM_DOMAINS.some(domain => url.hostname.includes(domain));
-  const isAsset = url.pathname.match(/\.(js|css|svg|ico|png|jpg|jpeg|webp)$/);
-
-  if (isCdn || isAsset) {
+  // 2. Video Data Strategy: Cache Playlist Metadata and limited Segments
+  // Helps with "Resume playback" and smoothing out jittery connections
+  if (url.pathname.endsWith('.m3u8') || url.pathname.endsWith('.ts')) {
     event.respondWith(
       caches.match(request).then((cached) => {
         const networkFetch = fetch(request).then((response) => {
-          if (response && response.status === 200 && response.type === 'basic' || response.type === 'cors') {
+          if (response && response.status === 200) {
             const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+            caches.open(CACHE_NAMES.video).then((cache) => {
+              cache.put(request, copy);
+              // Limit segment cache to roughly 100 segments to prevent storage bloat
+              if (url.pathname.endsWith('.ts')) {
+                limitCacheSize(CACHE_NAMES.video, 100);
+              }
+            });
           }
           return response;
         }).catch(() => cached);
-
         return cached || networkFetch;
       })
     );
     return;
   }
 
-  // 3. 其他 API 请求：网络优先
+  // 3. Image Strategy: Cache-First
+  const isImage = ASSET_DOMAINS.some(d => url.hostname.includes(d)) || 
+                  url.pathname.match(/\.(png|jpg|jpeg|webp|svg|ico)$/);
+  if (isImage) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        if (cached) return cached;
+        return fetch(request).then((response) => {
+          if (response && response.status === 200) {
+            const copy = response.clone();
+            caches.open(CACHE_NAMES.images).then((cache) => {
+              cache.put(request, copy);
+              limitCacheSize(CACHE_NAMES.images, 200);
+            });
+          }
+          return response;
+        });
+      })
+    );
+    return;
+  }
+
+  // 4. API Strategy: Stale-While-Revalidate
+  // Caches movie lists and details so they appear instantly on re-visit
+  if (url.searchParams.has('ac') || url.hostname.includes('douban.com')) {
+    event.respondWith(
+      caches.open(CACHE_NAMES.api).then((cache) => {
+        return cache.match(request).then((cached) => {
+          const networkFetch = fetch(request).then((response) => {
+            if (response && response.status === 200) {
+              cache.put(request, response.clone());
+            }
+            return response;
+          }).catch(() => cached);
+          return cached || networkFetch;
+        });
+      })
+    );
+    return;
+  }
+
+  // 5. Default Strategy: Network with Cache Fallback
   event.respondWith(
-    fetch(request).catch(() => caches.match(request))
+    caches.match(request).then((cached) => {
+      return fetch(request).then((response) => {
+        if (response && response.status === 200) {
+          const copy = response.clone();
+          caches.open(CACHE_NAMES.static).then((cache) => cache.put(request, copy));
+        }
+        return response;
+      }).catch(() => cached);
+    })
   );
 });

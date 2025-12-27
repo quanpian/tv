@@ -1,3 +1,4 @@
+
 // @ts-nocheck
 import { Episode, VodDetail, ApiResponse, ActorItem, RecommendationItem, VodItem, VodSource, PlaySource, HistoryItem, PersonDetail, ReviewItem } from '../types';
 import { createClient } from '@supabase/supabase-js';
@@ -41,10 +42,6 @@ const getCache = (key: string, ttl: number) => {
     return null;
 };
 
-// Fix: Add exported clearAppCache function to resolve the missing member error in SettingsModal.tsx
-/**
- * 清除全站缓存数据
- */
 export const clearAppCache = () => {
     const prefixes = Object.values(CACHE_KEYS);
     const keysToRemove: string[] = [];
@@ -74,7 +71,6 @@ export const addToHistory = (item: HistoryItem) => {
     } catch(e) { return []; }
 };
 
-// Fix: Corrected getVodSources to use SOURCES_KEY instead of HISTORY_KEY and return DEFAULT_SOURCE as fallback
 export const getVodSources = (): VodSource[] => {
     try { const stored = localStorage.getItem(SOURCES_KEY); if (stored) return JSON.parse(stored); } catch(e) {}
     return [DEFAULT_SOURCE];
@@ -243,9 +239,6 @@ export const fetchCategoryItems = async (
     return items;
 };
 
-/**
- * 名称规范化辅助函数：移除空格、版本号、年份等，用于精准去重。
- */
 const normalizeVodName = (name: string) => {
     return name.trim()
         .replace(/\s+/g, '')
@@ -256,12 +249,6 @@ const normalizeVodName = (name: string) => {
         .toLowerCase();
 };
 
-/**
- * 高性能聚合搜索：
- * 1. 优先获取豆瓣结果（确保封面和元数据质量）。
- * 2. 补全 CMS 结果。
- * 3. 智能名义去重：同一部电影即使在多个资源站出现也只保留一个，且优先保留带豆瓣 ID 的。
- */
 export const getAggregatedSearch = async (keyword: string): Promise<VodItem[]> => {
     const cacheKey = `${CACHE_KEYS.SEARCH}_${keyword}`;
     const cached = getCache(cacheKey, TTL.SEARCH);
@@ -273,27 +260,16 @@ export const getAggregatedSearch = async (keyword: string): Promise<VodItem[]> =
     ]);
 
     const resultMap = new Map<string, VodItem>();
-
-    // 第一步：存入豆瓣结果（元数据之王）
     doubanResults.forEach(item => {
         const key = normalizeVodName(item.vod_name);
-        if (!resultMap.has(key)) {
-            resultMap.set(key, item);
-        }
+        if (!resultMap.has(key)) resultMap.set(key, item);
     });
-
-    // 第二步：存入 CMS 结果（内容之源）
     cmsResults.forEach(item => {
         const key = normalizeVodName(item.vod_name);
-        // 如果豆瓣中没这个名，或者原本没有 pic 的才补上去
-        if (!resultMap.has(key)) {
-            resultMap.set(key, item);
-        } else {
-            // 已存在同名，如果原本是豆瓣项但没 pic，可用 CMS 的尝试覆盖（一般不发生）
+        if (!resultMap.has(key)) resultMap.set(key, item);
+        else {
             const existing = resultMap.get(key)!;
-            if (!existing.vod_pic && item.vod_pic) {
-                existing.vod_pic = item.vod_pic;
-            }
+            if (!existing.vod_pic && item.vod_pic) existing.vod_pic = item.vod_pic;
         }
     });
 
@@ -348,16 +324,23 @@ export const getAggregatedMovieDetail = async (id: number | string, apiUrl?: str
     const cacheKey = `${CACHE_KEYS.DETAIL}_${id}`;
     const cached = getCache(cacheKey, TTL.DETAIL);
     if (cached) return cached;
+    
     let doubanMetadata = null;
     let movieName = vodName || '';
+    
     if (movieName || !String(id).startsWith('cms_')) {
         doubanMetadata = await fetchDoubanData(movieName, String(id).startsWith('cms_') ? undefined : id);
         if (doubanMetadata) movieName = doubanMetadata.title;
     }
+    
     if (!doubanMetadata && String(id).startsWith('cms_')) {
         const rawCms = await getMovieDetail(id, apiUrl);
-        if (rawCms) { movieName = rawCms.vod_name; doubanMetadata = await fetchDoubanData(movieName); } else return null;
+        if (rawCms) {
+            movieName = rawCms.vod_name;
+            doubanMetadata = await fetchDoubanData(movieName);
+        } else return null;
     }
+
     if (!doubanMetadata) {
         const fallback = await getMovieDetail(id, apiUrl);
         if (!fallback) return null;
@@ -365,6 +348,7 @@ export const getAggregatedMovieDetail = async (id: number | string, apiUrl?: str
         setCache(cacheKey, res);
         return res;
     }
+
     const mainDetail: VodDetail = {
         vod_id: doubanMetadata.doubanId || id,
         vod_name: movieName || doubanMetadata.title || '未知影片',
@@ -381,11 +365,16 @@ export const getAggregatedMovieDetail = async (id: number | string, apiUrl?: str
         vod_play_from: '',
         vod_writer: doubanMetadata.writer,
         vod_pubdate: doubanMetadata.pubdate,
+        vod_episode_count: doubanMetadata.episodeCount,
+        vod_duration: doubanMetadata.duration,
+        vod_alias: doubanMetadata.alias,
+        vod_imdb: doubanMetadata.imdb,
         vod_reviews: doubanMetadata.reviews,
         vod_recs: doubanMetadata.recs,
         vod_actors_extended: doubanMetadata.actorsExtended,
         type_name: doubanMetadata.type_name
     };
+
     const sources = getVodSources().filter(s => s.active);
     const searchPromises = sources.map(async (s) => {
         try {
@@ -398,6 +387,7 @@ export const getAggregatedMovieDetail = async (id: number | string, apiUrl?: str
         } catch(e) {}
         return null;
     });
+
     const results = (await Promise.all(searchPromises)).filter((r): r is VodDetail => r !== null);
     if (results.length > 0) {
         mainDetail.vod_play_url = results[0].vod_play_url;
@@ -408,6 +398,7 @@ export const getAggregatedMovieDetail = async (id: number | string, apiUrl?: str
         setCache(cacheKey, res);
         return res;
     }
+
     const finalRes = { main: mainDetail, alternatives: [] };
     setCache(cacheKey, finalRes);
     return finalRes;
@@ -460,7 +451,7 @@ export const parseAllSources = (input: VodDetail | VodDetail[]): PlaySource[] =>
 export const fetchDoubanData = async (keyword: string, doubanId?: string | number): Promise<any | null> => {
   try {
     let targetId = doubanId;
-    if (!targetId || targetId === '0') {
+    if (!targetId || targetId === '0' || targetId === 0) {
         const data = await fetchWithProxy(`https://movie.douban.com/j/subject_suggest?q=${encodeURIComponent(keyword)}`);
         if (Array.isArray(data) && data.length > 0) targetId = data[0].id;
     }
@@ -470,6 +461,7 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     const result: any = { doubanId: String(targetId) };
+
     const getInfoField = (label: string): string => {
          const plSpan = Array.from(doc.querySelectorAll('#info span.pl')).find(el => el.textContent?.includes(label));
          if (!plSpan) return '';
@@ -477,9 +469,14 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
          if (attrsSpan && attrsSpan.classList.contains('attrs')) return attrsSpan.textContent?.trim() || '';
          let curr = plSpan.nextSibling;
          let content = '';
-         while(curr && curr.nodeName !== 'BR') { content += curr.textContent; curr = curr.nextSibling; }
+         while(curr && curr.nodeName !== 'BR') {
+             if (curr.nodeType === Node.ELEMENT_NODE && (curr as Element).classList.contains('pl')) break;
+             content += curr.textContent;
+             curr = curr.nextSibling;
+         }
          return content.replace(/:/g, '').trim();
     };
+
     result.title = doc.querySelector('h1 span[property="v:itemreviewed"]')?.textContent?.trim() || keyword;
     result.director = getInfoField('导演');
     result.actor = getInfoField('主演');
@@ -487,10 +484,15 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
     result.lang = getInfoField('语言');
     result.year = doc.querySelector('h1 span.year')?.textContent?.replace(/[\(\)]/g, '') || '';
     result.score = doc.querySelector('strong[property="v:average"]')?.textContent?.trim();
-    result.content = doc.querySelector('span[property="v:summary"]')?.textContent?.trim();
+    result.content = doc.querySelector('span[property="v:summary"]')?.textContent?.trim() || doc.querySelector('.all.hidden')?.textContent?.trim();
     result.writer = getInfoField('编剧');
     result.pubdate = getInfoField('首播') || getInfoField('上映日期');
     result.type_name = getInfoField('类型');
+    result.episodeCount = getInfoField('集数');
+    result.duration = getInfoField('单集片长') || getInfoField('片长');
+    result.alias = getInfoField('又名');
+    result.imdb = getInfoField('IMDb');
+
     const reviewItems = doc.querySelectorAll('.comment-item');
     if (reviewItems.length > 0) {
         result.reviews = Array.from(reviewItems).slice(0, 10).map(el => {
