@@ -15,10 +15,8 @@ const GeminiChat: React.FC<GeminiChatProps> = ({ currentMovie }) => {
   const chatSessionRef = useRef<Chat | null>(null);
 
   useEffect(() => {
-      const apiKey = process.env.API_KEY;
-      if (!apiKey) return;
-      
-      const ai = new GoogleGenAI({ apiKey });
+      // Fix: Strictly follow guidelines: Initialize with process.env.API_KEY directly and use model 'gemini-3-flash-preview'
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       let instruction = "你是一个电影专家。";
       if (currentMovie) {
           instruction += `当前正在讨论影片《${currentMovie.vod_name}》。请提供有趣且深度的见解。`;
@@ -39,6 +37,7 @@ const GeminiChat: React.FC<GeminiChatProps> = ({ currentMovie }) => {
 
       try {
           const result = await chatSessionRef.current.sendMessage({ message: userText });
+          // Fix: Access result.text property directly as per extracts guideline
           const responseText = result.text; 
           setMessages(prev => [...prev, { role: 'model', text: responseText || "我暂时无法回应，请稍后再试。" }]);
       } catch (e) {

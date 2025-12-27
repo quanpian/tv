@@ -417,6 +417,16 @@ export const addToHistory = (item: HistoryItem) => {
     return history;
 };
 
+// Fix: Added missing removeFromHistory implementation to resolve import error in App.tsx
+export const removeFromHistory = (vod_id: number | string) => {
+    try {
+        let history = getHistory();
+        history = history.filter(h => String(h.vod_id) !== String(vod_id));
+        localStorage.setItem('cine_watch_history', JSON.stringify(history));
+        return history;
+    } catch(e) { return []; }
+};
+
 export const clearAppCache = () => {
     localStorage.removeItem(HOME_CACHE_KEY);
     localStorage.removeItem('cine_cache_home');
