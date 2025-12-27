@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI, Chat } from '@google/genai';
 import { VodDetail, ChatMessage } from '../types';
@@ -52,7 +53,7 @@ const GeminiChat: React.FC<GeminiChatProps> = ({ currentMovie }) => {
           <button onClick={() => setIsOpen(!isOpen)} className="w-14 h-14 bg-[#22c55e] rounded-full shadow-lg shadow-[#22c55e]/40 flex items-center justify-center text-black font-black hover:scale-110 transition-transform ring-4 ring-white/10">AI</button>
           {isOpen && (
               <div className="absolute bottom-20 right-0 w-[380px] h-[520px] bg-gray-900/95 backdrop-blur-3xl border border-white/10 rounded-2xl flex flex-col overflow-hidden shadow-2xl animate-slide-up">
-                  <div className="p-5 bg-[#22c55e] text-black font-black text-center tracking-widest uppercase text-sm">CineStream AI Intelligence</div>
+                  <div className="p-5 bg-[#22c55e] text-black font-black text-center tracking-widest uppercase text-sm">CineStream 智能助手</div>
                   <div className="flex-1 overflow-y-auto p-5 space-y-5 custom-scrollbar bg-black/10">
                       {messages.map((m, i) => (
                           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -61,7 +62,7 @@ const GeminiChat: React.FC<GeminiChatProps> = ({ currentMovie }) => {
                               </div>
                           </div>
                       ))}
-                      {isLoading && <div className="text-[#22c55e] animate-pulse text-[10px] font-black uppercase">Thinking...</div>}
+                      {isLoading && <div className="text-[#22c55e] animate-pulse text-[10px] font-black uppercase">正在思考...</div>}
                   </div>
                   <form onSubmit={e => { e.preventDefault(); handleSend(); }} className="p-4 bg-black/40 flex gap-3 border-t border-white/5">
                       <input value={input} onChange={e => setInput(e.target.value)} className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-[#22c55e]/60" placeholder="有什么想问的..." />

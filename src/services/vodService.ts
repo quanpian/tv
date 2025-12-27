@@ -1,4 +1,3 @@
-
 import { Episode, VodDetail, ApiResponse, ActorItem, RecommendationItem, VodItem, VodSource, PlaySource, HistoryItem, PersonDetail } from '../types';
 import { createClient } from '@supabase/supabase-js';
 
@@ -36,6 +35,16 @@ const HOME_CACHE_KEY = 'cine_home_data_v2';
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 const HISTORY_KEY = 'cine_watch_history';
 const SOURCES_KEY = 'cine_vod_sources';
+
+// Fix: Add exported clearAppCache function used by SettingsModal.tsx
+/**
+ * 清除全站缓存数据
+ */
+export const clearAppCache = () => {
+    localStorage.removeItem(HOME_CACHE_KEY);
+    localStorage.removeItem('cine_cache_home');
+    localStorage.removeItem('cine_home_data_v2');
+};
 
 // --- HISTORY MANAGEMENT ---
 
@@ -826,7 +835,7 @@ export const parseAllSources = (input: VodDetail | VodDetail[]): PlaySource[] =>
         if (!detail.vod_play_url || !detail.vod_play_from) return;
 
         const fromArray = detail.vod_play_from.split('$$$');
-        const urlArray = detail.vod_play_url.split('$$$');
+        const urlStrArray = detail.vod_play_url.split('$$$');
         
         // Resolve Source Name
         let sourceName = '默认源';
@@ -842,7 +851,7 @@ export const parseAllSources = (input: VodDetail | VodDetail[]): PlaySource[] =>
         }
 
         fromArray.forEach((code, idx) => {
-            const urlStr = urlArray[idx];
+            const urlStr = urlStrArray[idx];
             if (!urlStr) return;
 
             // STRICT FILTER: Only allow M3U8 formats

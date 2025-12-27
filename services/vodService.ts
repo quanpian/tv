@@ -22,8 +22,10 @@ const GLOBAL_PROXY = 'https://daili.laibo123.dpdns.org/?url=';
 const HISTORY_KEY = 'cine_watch_history';
 const SOURCES_KEY = 'cine_vod_sources';
 
-const CACHE_KEYS = { HOME: 'cine_cache_home', SEARCH: 'cine_cache_search', DETAIL: 'cine_cache_detail', CATEGORY: 'cine_cache_cat' };
-const TTL = { HOME: 30 * 60 * 1000, SEARCH: 10 * 60 * 1000, DETAIL: 24 * 60 * 60 * 1000, CATEGORY: 20 * 60 * 1000 };
+const CACHE_KEYS = { HOME: 'cine_cache_home', SEARCH: 'cine_cache_search', DETAIL: 'cine_cache_detail', CATEGORY: 'cine_cache_cat', DANMAKU: 'cine_cache_dm' };
+const TTL = { HOME: 30 * 60 * 1000, SEARCH: 10 * 60 * 1000, DETAIL: 24 * 60 * 60 * 1000, CATEGORY: 20 * 60 * 1000, DANMAKU: 60 * 60 * 1000 };
+
+const danmakuMemoryCache = new Map<string, any[]>();
 
 const setCache = (key: string, data: any) => {
     try { localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() })); } catch (e) { if (e.name === 'QuotaExceededError') localStorage.clear(); }
@@ -39,9 +41,21 @@ const getCache = (key: string, ttl: number) => {
     return null;
 };
 
+// Fix: Add exported clearAppCache function to resolve the missing member error in SettingsModal.tsx
+/**
+ * 清除全站缓存数据
+ */
 export const clearAppCache = () => {
-    Object.values(CACHE_KEYS).forEach(k => localStorage.removeItem(k));
-    if ('caches' in window) caches.keys().then(names => names.forEach(n => caches.delete(n)));
+    const prefixes = Object.values(CACHE_KEYS);
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (prefixes.some(p => key.startsWith(p)) || key === 'cine_home_data_v2')) {
+            keysToRemove.push(key);
+        }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+    danmakuMemoryCache.clear();
 };
 
 export const getHistory = (): HistoryItem[] => {
@@ -60,6 +74,7 @@ export const addToHistory = (item: HistoryItem) => {
     } catch(e) { return []; }
 };
 
+// Fix: Corrected getVodSources to use SOURCES_KEY instead of HISTORY_KEY and return DEFAULT_SOURCE as fallback
 export const getVodSources = (): VodSource[] => {
     try { const stored = localStorage.getItem(SOURCES_KEY); if (stored) return JSON.parse(stored); } catch(e) {}
     return [DEFAULT_SOURCE];
@@ -93,7 +108,6 @@ export const addVodSource = async (name: string, api: string) => {
     return newSource;
 };
 
-// Fix: Add missing deleteVodSource export
 export const deleteVodSource = async (id: string) => {
     const sources = getVodSources();
     const target = sources.find(s => s.id === id);
@@ -101,16 +115,11 @@ export const deleteVodSource = async (id: string) => {
     saveVodSources(filtered);
     if (supabase && target) {
         try {
-            // Attempt to delete by ID, and also by API URL as a fallback for sync robustness
-            let { error } = await supabase.from('cine_sources').delete().eq('id', id);
-            if (error || true) {
-                 await supabase.from('cine_sources').delete().eq('api', target.api);
-            }
+            await supabase.from('cine_sources').delete().eq('api', target.api);
         } catch (e) {}
     }
 };
 
-// Fix: Add missing resetVodSources export
 export const resetVodSources = async () => {
     localStorage.removeItem(SOURCES_KEY);
     if (supabase) {
@@ -130,6 +139,24 @@ const fetchWithProxy = async (targetUrl: string, options: RequestInit = {}): Pro
       }
   } catch (e) {}
   return null;
+};
+
+export const fetchDanmaku = async (keyword: string, episodeIndex: number = 0): Promise<any[]> => {
+    const cacheKey = `${keyword}_ep${episodeIndex}`;
+    if (danmakuMemoryCache.has(cacheKey)) return danmakuMemoryCache.get(cacheKey)!;
+    const localCached = getCache(`${CACHE_KEYS.DANMAKU}_${cacheKey}`, TTL.DANMAKU);
+    if (localCached) { danmakuMemoryCache.set(cacheKey, localCached); return localCached; }
+    try {
+        const queryUrl = `https://dm.cinestream.io/api/v1/danmaku?wd=${encodeURIComponent(keyword)}&ep=${episodeIndex}`;
+        const data = await fetchWithProxy(queryUrl);
+        if (data && Array.isArray(data.danmaku)) {
+            const result = data.danmaku.map(d => ({ time: d.time || d[0] || 0, text: d.text || d[4] || '', color: d.color || d[2] || '#ffffff', type: d.type || d[1] || 0 }));
+            danmakuMemoryCache.set(cacheKey, result);
+            setCache(`${CACHE_KEYS.DANMAKU}_${cacheKey}`, result);
+            return result;
+        }
+    } catch (e) {}
+    return [];
 };
 
 const fetchCmsData = async (baseUrl: string, params: URLSearchParams): Promise<any> => {
@@ -179,16 +206,98 @@ export const getHomeSections = async () => {
     return results;
 };
 
+export const fetchCategoryItems = async (
+    category: string, 
+    options: { filter1?: string, filter2?: string } = {}
+): Promise<VodItem[]> => {
+    const { filter1 = '全部', filter2 = '全部' } = options;
+    let type = 'movie';
+    let tag = '热门';
+    let sort = 'recommend';
+    switch (category) {
+        case 'movies':
+            type = 'movie';
+            if (filter1 === '最新电影') sort = 'time'; else if (filter1 === '豆瓣高分') sort = 'rank'; else if (filter1 === '冷门佳片') tag = '冷门佳片'; else tag = '热门';
+            if (filter2 !== '全部') tag = filter2;
+            break;
+        case 'series':
+            type = 'tv'; tag = '热门';
+            if (filter1 === '最近热门') sort = 'recommend';
+            if (filter2 === '国产') tag = '国产剧'; else if (filter2 === '欧美') tag = '美剧'; else if (filter2 === '日本') tag = '日剧'; else if (filter2 === '韩国') tag = '韩剧'; else if (filter2 === '动漫') tag = '日本动画'; else if (filter2 !== '全部') tag = filter2;
+            break;
+        case 'anime':
+            type = 'tv'; tag = '日本动画';
+            if (filter1 === '剧场版') { type = 'movie'; tag = '日本动画'; sort = 'recommend'; } 
+            else if (filter2 !== '全部' && !['全部', '周一', '周二', '周三', '周四', '周五', '周六', '周日'].includes(filter2)) { tag = filter2; }
+            break;
+        case 'variety':
+            type = 'tv'; tag = '综艺';
+            if (filter2 === '国内' || filter2 === '大陆') tag = '大陆综艺'; else if (filter2 !== '全部') tag = filter2 + '综艺'; 
+            break;
+    }
+    const cacheKey = `${CACHE_KEYS.CATEGORY}_${category}_${filter1}_${filter2}`;
+    const cached = getCache(cacheKey, TTL.CATEGORY);
+    if (cached) return cached;
+    const items = await fetchDoubanJson(type, tag, 60, sort);
+    if (items.length > 0) setCache(cacheKey, items);
+    return items;
+};
+
+/**
+ * 名称规范化辅助函数：移除空格、版本号、年份等，用于精准去重。
+ */
+const normalizeVodName = (name: string) => {
+    return name.trim()
+        .replace(/\s+/g, '')
+        .replace(/\[.*?\]/g, '')
+        .replace(/\(.*?\)/g, '')
+        .replace(/第.*?季/g, '')
+        .replace(/电影版|剧场版|真人版/g, '')
+        .toLowerCase();
+};
+
+/**
+ * 高性能聚合搜索：
+ * 1. 优先获取豆瓣结果（确保封面和元数据质量）。
+ * 2. 补全 CMS 结果。
+ * 3. 智能名义去重：同一部电影即使在多个资源站出现也只保留一个，且优先保留带豆瓣 ID 的。
+ */
 export const getAggregatedSearch = async (keyword: string): Promise<VodItem[]> => {
     const cacheKey = `${CACHE_KEYS.SEARCH}_${keyword}`;
     const cached = getCache(cacheKey, TTL.SEARCH);
     if (cached) return cached;
-    const [doubanResults, cmsResults] = await Promise.all([searchDouban(keyword), searchAllCmsResources(keyword)]);
-    const finalResults = [...doubanResults];
-    const existingNames = new Set(doubanResults.map(i => i.vod_name.trim()));
-    cmsResults.forEach(item => {
-        if (!existingNames.has(item.vod_name.trim())) { finalResults.push(item); existingNames.add(item.vod_name.trim()); }
+
+    const [doubanResults, cmsResults] = await Promise.all([
+        searchDouban(keyword),
+        searchAllCmsResources(keyword)
+    ]);
+
+    const resultMap = new Map<string, VodItem>();
+
+    // 第一步：存入豆瓣结果（元数据之王）
+    doubanResults.forEach(item => {
+        const key = normalizeVodName(item.vod_name);
+        if (!resultMap.has(key)) {
+            resultMap.set(key, item);
+        }
     });
+
+    // 第二步：存入 CMS 结果（内容之源）
+    cmsResults.forEach(item => {
+        const key = normalizeVodName(item.vod_name);
+        // 如果豆瓣中没这个名，或者原本没有 pic 的才补上去
+        if (!resultMap.has(key)) {
+            resultMap.set(key, item);
+        } else {
+            // 已存在同名，如果原本是豆瓣项但没 pic，可用 CMS 的尝试覆盖（一般不发生）
+            const existing = resultMap.get(key)!;
+            if (!existing.vod_pic && item.vod_pic) {
+                existing.vod_pic = item.vod_pic;
+            }
+        }
+    });
+
+    const finalResults = Array.from(resultMap.values());
     setCache(cacheKey, finalResults);
     return finalResults;
 };
@@ -203,7 +312,7 @@ const searchAllCmsResources = async (keyword: string): Promise<VodItem[]> => {
                 return data.list.map((item: any) => ({
                     vod_id: `cms_${item.vod_id}`,
                     vod_name: item.vod_name,
-                    vod_pic: item.vod_pic || '', 
+                    vod_pic: item.vod_pic && !item.vod_pic.includes('mac_default') ? item.vod_pic : '', 
                     vod_remarks: item.vod_remarks,
                     type_name: item.type_name,
                     vod_year: item.vod_year,
@@ -239,23 +348,16 @@ export const getAggregatedMovieDetail = async (id: number | string, apiUrl?: str
     const cacheKey = `${CACHE_KEYS.DETAIL}_${id}`;
     const cached = getCache(cacheKey, TTL.DETAIL);
     if (cached) return cached;
-
     let doubanMetadata = null;
     let movieName = vodName || '';
-
     if (movieName || !String(id).startsWith('cms_')) {
         doubanMetadata = await fetchDoubanData(movieName, String(id).startsWith('cms_') ? undefined : id);
         if (doubanMetadata) movieName = doubanMetadata.title;
     }
-
     if (!doubanMetadata && String(id).startsWith('cms_')) {
         const rawCms = await getMovieDetail(id, apiUrl);
-        if (rawCms) {
-            movieName = rawCms.vod_name;
-            doubanMetadata = await fetchDoubanData(movieName);
-        } else return null;
+        if (rawCms) { movieName = rawCms.vod_name; doubanMetadata = await fetchDoubanData(movieName); } else return null;
     }
-
     if (!doubanMetadata) {
         const fallback = await getMovieDetail(id, apiUrl);
         if (!fallback) return null;
@@ -263,7 +365,6 @@ export const getAggregatedMovieDetail = async (id: number | string, apiUrl?: str
         setCache(cacheKey, res);
         return res;
     }
-
     const mainDetail: VodDetail = {
         vod_id: doubanMetadata.doubanId || id,
         vod_name: movieName || doubanMetadata.title || '未知影片',
@@ -285,7 +386,6 @@ export const getAggregatedMovieDetail = async (id: number | string, apiUrl?: str
         vod_actors_extended: doubanMetadata.actorsExtended,
         type_name: doubanMetadata.type_name
     };
-
     const sources = getVodSources().filter(s => s.active);
     const searchPromises = sources.map(async (s) => {
         try {
@@ -298,7 +398,6 @@ export const getAggregatedMovieDetail = async (id: number | string, apiUrl?: str
         } catch(e) {}
         return null;
     });
-
     const results = (await Promise.all(searchPromises)).filter((r): r is VodDetail => r !== null);
     if (results.length > 0) {
         mainDetail.vod_play_url = results[0].vod_play_url;
@@ -309,7 +408,6 @@ export const getAggregatedMovieDetail = async (id: number | string, apiUrl?: str
         setCache(cacheKey, res);
         return res;
     }
-
     const finalRes = { main: mainDetail, alternatives: [] };
     setCache(cacheKey, finalRes);
     return finalRes;
@@ -336,15 +434,12 @@ export const parseAllSources = (input: VodDetail | VodDetail[]): PlaySource[] =>
     const details = Array.isArray(input) ? input : [input];
     const allSources: PlaySource[] = [];
     const sourceConfigs = getVodSources();
-
     details.forEach(detail => {
         if (!detail.vod_play_url || !detail.vod_play_from) return;
         const fromArray = detail.vod_play_from.split('$$$');
         const urlArray = detail.vod_play_url.split('$$$');
-        
         let rawSourceName = sourceConfigs.find(s => s.api === detail.api_url)?.name || '采集站';
         const baseSourceName = rawSourceName.split('-')[0].trim().replace(/m3u8/gi, '').trim();
-
         fromArray.forEach((code, idx) => {
             const urlStr = urlArray[idx];
             if (!urlStr || (!code.toLowerCase().includes('m3u8') && !urlStr.includes('.m3u8'))) return;
@@ -375,7 +470,6 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     const result: any = { doubanId: String(targetId) };
-
     const getInfoField = (label: string): string => {
          const plSpan = Array.from(doc.querySelectorAll('#info span.pl')).find(el => el.textContent?.includes(label));
          if (!plSpan) return '';
@@ -386,7 +480,6 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
          while(curr && curr.nodeName !== 'BR') { content += curr.textContent; curr = curr.nextSibling; }
          return content.replace(/:/g, '').trim();
     };
-
     result.title = doc.querySelector('h1 span[property="v:itemreviewed"]')?.textContent?.trim() || keyword;
     result.director = getInfoField('导演');
     result.actor = getInfoField('主演');
@@ -398,7 +491,6 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
     result.writer = getInfoField('编剧');
     result.pubdate = getInfoField('首播') || getInfoField('上映日期');
     result.type_name = getInfoField('类型');
-
     const reviewItems = doc.querySelectorAll('.comment-item');
     if (reviewItems.length > 0) {
         result.reviews = Array.from(reviewItems).slice(0, 10).map(el => {
@@ -414,7 +506,6 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
             return { user, avatar, rating: stars, content, time: location ? `${time} · ${location}` : time, useful_count: votes };
         });
     }
-
     const celebrityItems = doc.querySelectorAll('#celebrities .celebrity');
     if (celebrityItems.length > 0) {
         result.actorsExtended = Array.from(celebrityItems).slice(0, 10).map(el => {
@@ -424,7 +515,6 @@ export const fetchDoubanData = async (keyword: string, doubanId?: string | numbe
             return { name, role, pic };
         });
     }
-
     const recItems = doc.querySelectorAll('#recommendations dl');
     if (recItems.length > 0) {
         result.recs = Array.from(recItems).slice(0, 10).map(el => {

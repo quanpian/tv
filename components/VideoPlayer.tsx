@@ -3,6 +3,7 @@ import React, { useEffect, useRef, forwardRef, useImperativeHandle, useState } f
 import Artplayer from 'artplayer';
 import artplayerPluginDanmuku from 'artplayer-plugin-danmuku';
 import Hls from 'hls.js';
+import { fetchDanmaku } from '../services/vodService';
 
 interface VideoPlayerProps {
   url: string;
@@ -47,13 +48,47 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
 
   const handleSkipAd = () => {
     if (artRef.current) {
-        // 通常插播广告在 15-60s 之间，点击跳过直接跳转到 60s 或用户设定的片头位置
         const skipHead = parseInt(localStorage.getItem('art_skip_head') || '0');
         const jumpTo = Math.max(60, skipHead);
         artRef.current.seek = jumpTo;
         artRef.current.notice.show = '已为您成功跳过插播广告';
         setShowSkipAd(false);
     }
+  };
+
+  /**
+   * 异步分批载入弹幕，防止大数据量导致的卡顿
+   */
+  const loadDanmakuAsync = async (art: Artplayer, keyword: string, ep: number) => {
+      const danmaku = await fetchDanmaku(keyword, ep);
+      if (!danmaku || danmaku.length === 0) return;
+
+      const plugin = (art.plugins as any).artplayerPluginDanmuku;
+      if (!plugin) return;
+
+      // 分批注入逻辑
+      const BATCH_SIZE = 1500;
+      let offset = 0;
+      
+      const injectBatch = () => {
+          const batch = danmaku.slice(offset, offset + BATCH_SIZE);
+          if (batch.length > 0) {
+              plugin.config({ danmuku: [...(plugin.option.danmuku || []), ...batch] });
+              offset += BATCH_SIZE;
+              if (offset < danmaku.length) {
+                  // 使用 requestIdleCallback 或 setTimeout 将任务分解
+                  if (window.requestIdleCallback) {
+                      window.requestIdleCallback(injectBatch);
+                  } else {
+                      setTimeout(injectBatch, 50);
+                  }
+              } else {
+                  console.log(`弹幕加载完毕: 共 ${danmaku.length} 条`);
+              }
+          }
+      };
+
+      injectBatch();
   };
 
   useEffect(() => {
@@ -63,6 +98,9 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
               const progressKey = (vodId && episodeIndex !== undefined) ? `cine_progress_${vodId}_${episodeIndex}` : `cine_progress_${url}`;
               const savedTime = parseFloat(localStorage.getItem(progressKey) || '0');
               if (savedTime > 5) art.seek = savedTime;
+              
+              // 切换视频后重新加载弹幕
+              if (title) loadDanmakuAsync(art, title, episodeIndex);
           });
       }
   }, [url, episodeIndex, vodId]);
@@ -171,32 +209,31 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
               art.seek = savedTime;
               art.notice.show = `[自动续播] 已回到上次观看位置`;
           }
+          
+          // 首次就绪载入弹幕
+          if (title) loadDanmakuAsync(art, title, episodeIndex);
       });
 
       art.on('video:timeupdate', () => {
           const progressKey = (propsRef.current.vodId && propsRef.current.episodeIndex !== undefined) ? `cine_progress_${propsRef.current.vodId}_${propsRef.current.episodeIndex}` : `cine_progress_${propsRef.current.url}`;
           if (art.currentTime > 0) localStorage.setItem(progressKey, String(art.currentTime));
 
-          // 智能广告检测：前 60s 内如果没设置自动跳过片头，则显示跳过广告按钮
           if (art.currentTime < 60 && art.currentTime > 2 && !autoSkipAd) {
               if (!showSkipAd) setShowSkipAd(true);
           } else {
               if (showSkipAd) setShowSkipAd(false);
           }
 
-          // 如果开启了自动跳过广告且当前处于前 15s (通常广告时长)
           if (autoSkipAd && art.currentTime < 15 && art.duration > 300 && !art.userSeek) {
               art.seek = 15;
               art.notice.show = '已为您自动拦截插播广告';
           }
 
-          // 自动跳过片头
           if (skipHead > 0 && art.duration > 300 && art.currentTime < skipHead && !art.userSeek) {
               art.seek = skipHead;
               art.notice.show = `已自动跳过片头 ${skipHead}s`;
           }
 
-          // 自动跳过片尾
           if (skipTail > 0 && art.duration > 300 && art.currentTime > 60 && (art.duration - art.currentTime) <= skipTail && !art.userSeek) {
               if (propsRef.current.onNext) {
                   art.notice.show = '即将为您播放下一集';
@@ -223,7 +260,6 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
         
         <div ref={containerRef} className="w-full h-full" />
 
-        {/* 悬浮跳过广告按钮 */}
         {showSkipAd && (
             <div className="absolute bottom-24 right-6 z-50 animate-slide-in-right">
                 <button 
