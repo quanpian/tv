@@ -23,6 +23,25 @@ const GLOBAL_PROXY = 'https://daili.laibo123.dpdns.org/?url=';
 const HISTORY_KEY = 'cine_watch_history';
 const SOURCES_KEY = 'cine_vod_sources';
 
+// --- 静态备用数据 ---
+const FALLBACK_DATA = {
+    movies: [
+        { vod_id: "26752088", vod_name: "我不是药神", vod_pic: "https://img9.doubanio.com/view/photo/l/public/p2561305051.webp", vod_score: "9.0", type_name: "剧情", vod_year: "2018", source: 'douban' },
+        { vod_id: "1292052", vod_name: "肖申克的救赎", vod_pic: "https://img2.doubanio.com/view/photo/l/public/p480747492.webp", vod_score: "9.7", type_name: "剧情", vod_year: "1994", source: 'douban' },
+        { vod_id: "35465225", vod_name: "长津湖", vod_pic: "https://img9.doubanio.com/view/photo/l/public/p2681146755.webp", vod_score: "7.4", type_name: "战争", vod_year: "2021", source: 'douban' }
+    ],
+    series: [
+        { vod_id: "35456391", vod_name: "狂飙", vod_pic: "https://img9.doubanio.com/view/photo/l/public/p2886364024.webp", vod_score: "8.5", type_name: "犯罪", vod_year: "2023", source: 'douban' },
+        { vod_id: "30444960", vod_name: "繁花", vod_pic: "https://img9.doubanio.com/view/photo/l/public/p2902345475.webp", vod_score: "8.7", type_name: "剧情", vod_year: "2024", source: 'douban' }
+    ],
+    anime: [
+        { vod_id: "35032540", vod_name: "国王排名", vod_pic: "https://img9.doubanio.com/view/photo/l/public/p2680608511.webp", vod_score: "9.2", type_name: "动画", vod_year: "2021", source: 'douban' }
+    ],
+    variety: [
+        { vod_id: "35232144", vod_name: "种地吧", vod_pic: "https://img1.doubanio.com/view/photo/l/public/p2887220265.webp", vod_score: "9.0", type_name: "综艺", vod_year: "2023", source: 'douban' }
+    ]
+};
+
 // --- 缓存配置 ---
 const CACHE_KEYS = {
     HOME: 'cine_cache_home',
@@ -159,7 +178,7 @@ export const resetVodSources = async () => {
 const fetchWithProxy = async (targetUrl: string, options: RequestInit = {}): Promise<any> => {
   try {
       const proxyUrl = `${GLOBAL_PROXY}${encodeURIComponent(targetUrl)}`;
-      const response = await fetch(proxyUrl, { ...options, signal: AbortSignal.timeout(10000) });
+      const response = await fetch(proxyUrl, { ...options, signal: AbortSignal.timeout(12000) });
       if (response.ok) {
           const text = await response.text();
           try { return JSON.parse(text); } catch(e) { return text; }
@@ -172,7 +191,7 @@ const fetchCmsData = async (baseUrl: string, params: URLSearchParams): Promise<a
     params.set('out', 'json');
     const url = `${baseUrl}?${params.toString()}`;
     try {
-        const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+        const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
         if (res.ok) {
             const text = await res.text();
             try { return JSON.parse(text); } catch (e) {}
@@ -203,24 +222,26 @@ export const getHomeSections = async () => {
     if (cached) return cached;
 
     const safeFetch = async (fn: Promise<VodItem[]>) => { try { return await fn; } catch (e) { return []; } };
+    
+    // 使用更通用的 '热门' 标签提高成功率
     const [movies, series, shortDrama, anime, variety] = await Promise.all([
         safeFetch(fetchDoubanJson('movie', '热门', 18)),
-        safeFetch(fetchDoubanJson('tv', '电视剧', 18)),
+        safeFetch(fetchDoubanJson('tv', '热门', 18)),
         safeFetch(fetchDoubanJson('tv', '短剧', 18)), 
         safeFetch(fetchDoubanJson('tv', '日本动画', 18)),
         safeFetch(fetchDoubanJson('tv', '综艺', 18))
     ]);
     
-    const results = { movies, series, shortDrama, anime, variety };
-    if (movies.length > 0 || series.length > 0) {
+    // 聚合结果并检查是否全部为空
+    const isEmpty = movies.length === 0 && series.length === 0 && anime.length === 0;
+    const results = isEmpty ? { ...FALLBACK_DATA, shortDrama: [] } : { movies, series, shortDrama, anime, variety };
+    
+    if (!isEmpty) {
         setCache(CACHE_KEYS.HOME, results);
     }
     return results;
 };
 
-/**
- * 修复逻辑：支持豆瓣标签映射与 CMS 回源兜底
- */
 export const fetchCategoryItems = async (category: string, options: any = {}): Promise<VodItem[]> => {
     const { filter1 = '全部', filter2 = '全部', page = 1 } = options;
     const cacheKey = `${CACHE_KEYS.CATEGORY}_${category}_${filter1}_${filter2}_${page}`;
@@ -231,7 +252,6 @@ export const fetchCategoryItems = async (category: string, options: any = {}): P
     const start = (page - 1) * limit;
     let type = 'movie', tag = '电影', sort = 'recommend';
 
-    // 1. 豆瓣分类逻辑映射
     if (category === 'movies') {
         type = 'movie'; tag = '电影';
         if (filter1 === '最新电影') sort = 'time'; 
@@ -256,12 +276,9 @@ export const fetchCategoryItems = async (category: string, options: any = {}): P
 
     let results = await fetchDoubanJson(type, tag, limit, sort, start);
 
-    // 2. 兜底逻辑：如果豆瓣没数据，从 CMS 采集站获取
     if (results.length === 0) {
-        console.warn(`Category ${category} returned no data from Douban, falling back to CMS...`);
         const fallbackKeyword = filter2 !== '全部' ? filter2 : (category === 'movies' ? '电影' : category === 'series' ? '电视剧' : category === 'anime' ? '动漫' : '综艺');
         const cmsResults = await searchAllCmsResources(fallbackKeyword);
-        // 模拟分页
         results = cmsResults.slice(start, start + limit);
     }
 

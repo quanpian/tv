@@ -3,7 +3,6 @@ import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react
 import Artplayer from 'artplayer';
 import artplayerPluginDanmuku from 'artplayer-plugin-danmuku';
 import Hls from 'hls.js';
-import P2PEngine from 'swarmcloud-hls';
 
 interface VideoPlayerProps {
   url: string;
@@ -32,13 +31,8 @@ const SKIP_OPTIONS = [
 const DANMAKU_API = 'https://daili.laibo123.dpdns.org/5573108/api/v2/comment'; 
 const CACHE_TTL = 15 * 60 * 1000; 
 
-/**
- * 优化后的弹幕抓取函数：包含缓存、清洗、超时控制
- */
 const fetchDanmaku = async (title: string, episodeIndex: number, vodId: string | number) => {
     const cacheKey = `cine_danmaku_${vodId}_${episodeIndex}`;
-    
-    // 1. 尝试从 LocalStorage 获取缓存
     try {
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
@@ -47,19 +41,15 @@ const fetchDanmaku = async (title: string, episodeIndex: number, vodId: string |
         }
     } catch (e) {}
 
-    // 2. 缓存失效，发起网络请求
     try {
-        // 设置 5s 超时，防止阻塞播放器初始化
         const response = await fetch(`${DANMAKU_API}/match?name=${encodeURIComponent(title)}&episode=${episodeIndex + 1}`, {
             signal: AbortSignal.timeout(5000)
         });
-        
         if (!response.ok) return [];
         const result = await response.json();
         const rawData = result.data || result;
         if (!Array.isArray(rawData)) return [];
 
-        // 3. 异步处理/清洗海量数据
         const formatted = rawData.map((item: any) => {
             if (Array.isArray(item)) {
                 return {
@@ -71,23 +61,17 @@ const fetchDanmaku = async (title: string, episodeIndex: number, vodId: string |
                 };
             }
             return item;
-        }).filter(d => d.text && d.text.length > 0 && d.text.length < 150); // 过滤无意义超长弹幕
+        }).filter(d => d.text && d.text.length < 150);
 
-        // 4. 写入缓存（带配额清理逻辑）
         try {
             localStorage.setItem(cacheKey, JSON.stringify({ data: formatted, timestamp: Date.now() }));
         } catch (e) {
-            // 如果存储已满，清理过往所有弹幕缓存
             Object.keys(localStorage).forEach(key => {
                 if (key.startsWith('cine_danmaku_')) localStorage.removeItem(key);
             });
         }
-
         return formatted;
-    } catch (e) {
-        console.warn('Danmaku synchronization failed:', e);
-        return [];
-    }
+    } catch (e) { return []; }
 };
 
 const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
@@ -103,25 +87,31 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
 
   useImperativeHandle(ref, () => ({ getInstance: () => artRef.current }));
 
-  /**
-   * 独立的弹幕加载逻辑：与视频源切换同步
-   */
+  // 获取当前视频的存储 Key
+  const getProgressKey = () => {
+    const p = propsRef.current;
+    return (p.vodId && p.episodeIndex !== undefined) 
+        ? `cine_progress_${p.vodId}_${p.episodeIndex}` 
+        : `cine_progress_url_${btoa(p.url).slice(0, 16)}`;
+  };
+
   const loadDanmakuAsync = async (art: Artplayer) => {
       const plugin = (art.plugins as any).artplayerPluginDanmuku;
       if (!plugin || !propsRef.current.vodId) return;
-
-      art.notice.show = '正在同步云端弹幕...';
-      const danmaku = await fetchDanmaku(
-          propsRef.current.title || '', 
-          propsRef.current.episodeIndex || 0, 
-          propsRef.current.vodId
-      );
-
+      const danmaku = await fetchDanmaku(propsRef.current.title || '', propsRef.current.episodeIndex || 0, propsRef.current.vodId);
       if (danmaku.length > 0) {
           plugin.config({ danmuku: danmaku });
-          art.notice.show = `同步完成: 已加载 ${danmaku.length} 条弹幕`;
-      } else {
-          art.notice.show = '暂无云端弹幕';
+      }
+  };
+
+  // 核心跳转逻辑
+  const seekToSavedProgress = (art: Artplayer) => {
+      const key = getProgressKey();
+      const savedTime = parseFloat(localStorage.getItem(key) || '0');
+      // 如果进度大于 5 秒且离结束还有 10 秒以上，则续播
+      if (savedTime > 5 && (art.duration === 0 || savedTime < art.duration - 10)) {
+          art.seek = savedTime;
+          art.notice.show = `已为您自动续播至 ${Math.floor(savedTime / 60)}:${String(Math.floor(savedTime % 60)).padStart(2, '0')}`;
       }
   };
 
@@ -129,11 +119,7 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
       const art = artRef.current;
       if (art && url && url !== art.url) {
           art.switchUrl(url).then(() => {
-              const progressKey = (vodId && episodeIndex !== undefined) ? `cine_progress_${vodId}_${episodeIndex}` : `cine_progress_${url}`;
-              const savedTime = parseFloat(localStorage.getItem(progressKey) || '0');
-              if (savedTime > 5) art.seek = savedTime;
-              
-              // 切换剧集时重新加载弹幕
+              seekToSavedProgress(art);
               loadDanmakuAsync(art);
           });
       }
@@ -168,7 +154,6 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
                     click: function () { 
                         const plugin = (this.plugins as any).artplayerPluginDanmuku;
                         if (plugin) { if (plugin.visible) plugin.hide(); else plugin.show(); }
-                        this.notice.show = `弹幕已${plugin.visible ? '开启' : '关闭'}`;
                     } 
                  }
               ],
@@ -188,20 +173,35 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
           });
 
           art.on('ready', () => {
-              const progressKey = (propsRef.current.vodId && propsRef.current.episodeIndex !== undefined) ? `cine_progress_${propsRef.current.vodId}_${propsRef.current.episodeIndex}` : `cine_progress_${propsRef.current.url}`;
-              const savedTime = parseFloat(localStorage.getItem(progressKey) || '0');
-              if (savedTime > 5 && savedTime < art.duration - 5) art.seek = savedTime;
-              
-              // 初始加载弹幕
+              seekToSavedProgress(art);
               loadDanmakuAsync(art);
           });
 
           art.on('video:timeupdate', function() {
-              const progressKey = (propsRef.current.vodId && propsRef.current.episodeIndex !== undefined) ? `cine_progress_${propsRef.current.vodId}_${propsRef.current.episodeIndex}` : `cine_progress_${propsRef.current.url}`;
-              if (art.currentTime > 0) localStorage.setItem(progressKey, String(art.currentTime));
-              if (skipHead > 0 && art.duration > 300 && art.currentTime < skipHead && !art.userSeek) art.seek = skipHead; 
+              const key = getProgressKey();
+              
+              // 1. 进度记录逻辑
+              if (art.currentTime > 5) {
+                  // 如果离结束不到 10 秒，视为已播放完毕，清除记录
+                  if (art.duration > 30 && (art.duration - art.currentTime) < 10) {
+                      localStorage.removeItem(key);
+                  } else {
+                      localStorage.setItem(key, String(art.currentTime));
+                  }
+              }
+
+              // 2. 自动跳过片头
+              if (skipHead > 0 && art.duration > 300 && art.currentTime < skipHead && !art.userSeek) {
+                  art.seek = skipHead;
+                  art.notice.show = `已为您跳过片头 ${skipHead} 秒`;
+              }
+
+              // 3. 自动跳过片尾并切集
               if (skipTail > 0 && art.duration > 300 && art.currentTime > 60 && (art.duration - art.currentTime) <= skipTail && !art.userSeek) {
-                  if (latestOnNext.current) { art.notice.show = '即将播放下一集'; latestOnNext.current(); }
+                  if (latestOnNext.current) { 
+                      localStorage.removeItem(key); // 切换下一集前清除当前进度
+                      latestOnNext.current(); 
+                  }
               }
           });
 
@@ -229,9 +229,7 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
             .art-progress { bottom: 70px !important; height: 5px !important; }
             .art-progress-indicator { background: #22c55e !important; border: 3px solid #fff !important; width: 16px !important; height: 16px !important; box-shadow: 0 0 15px rgba(34, 197, 94, 0.8) !important; }
             .art-notice { background: rgba(34, 197, 94, 0.9) !important; border-radius: 100px !important; padding: 12px 28px !important; font-weight: 900 !important; font-size: 14px !important; letter-spacing: 0.1em !important; box-shadow: 0 10px 20px rgba(0,0,0,0.3) !important; }
-            .art-control-danmaku-toggle { color: #fff !important; opacity: 0.8; transition: all 0.3s; }
-            .art-control-danmaku-toggle:hover { opacity: 1; transform: scale(1.1); color: #22c55e !important; }
-
+            
             @media (max-width: 768px) {
                 .art-bottom { padding: 0 10px 10px !important; }
                 .art-controls { height: 52px !important; border-radius: 16px !important; }

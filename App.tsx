@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-// Removed enrichVodDetail as it is not exported by vodService and is unused in this file.
 import { getHomeSections, searchCms, getAggregatedSearch, getAggregatedMovieDetail, parseAllSources, fetchDoubanData, fetchCategoryItems, getHistory, addToHistory, removeFromHistory, fetchPersonDetail, initVodSources } from './services/vodService';
 import MovieInfoCard from './components/MovieInfoCard';
 import ImageWithFallback from './components/ImageWithFallback';
@@ -220,7 +219,11 @@ const App: React.FC = () => {
        getHomeSections().then(initialData => {
            if (initialData) {
                setHomeSections(initialData);
-               const allItems = [ ...initialData.movies, ...initialData.series, ...initialData.anime ];
+               const allItems = [ 
+                   ...(initialData.movies || []), 
+                   ...(initialData.series || []), 
+                   ...(initialData.anime || []) 
+               ];
                setHeroItems(allItems.slice(0, 10));
            }
            setLoading(false);
@@ -418,10 +421,10 @@ const App: React.FC = () => {
                   <>
                       {heroItems.length > 0 && <HeroBanner items={heroItems} onPlay={handleItemClick} />}
                       {watchHistory.length > 0 && <HorizontalSection title="继续观看" items={watchHistory} id="history" onItemClick={handleItemClick} onItemContextMenu={(e, item) => { e.preventDefault(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, item }); }} />}
-                      <HorizontalSection title="热门电影" items={homeSections.movies} id="movies" onItemClick={handleItemClick} />
-                      <HorizontalSection title="热播剧集" items={homeSections.series} id="series" onItemClick={handleItemClick} />
-                      <HorizontalSection title="热门动漫" items={homeSections.anime} id="anime" onItemClick={handleItemClick} />
-                      <HorizontalSection title="精选综艺" items={homeSections.variety} id="variety" onItemClick={handleItemClick} />
+                      <HorizontalSection title="热门电影" items={homeSections.movies || []} id="movies" onItemClick={handleItemClick} />
+                      <HorizontalSection title="热播剧集" items={homeSections.series || []} id="series" onItemClick={handleItemClick} />
+                      <HorizontalSection title="热门动漫" items={homeSections.anime || []} id="anime" onItemClick={handleItemClick} />
+                      <HorizontalSection title="精选综艺" items={homeSections.variety || []} id="variety" onItemClick={handleItemClick} />
                   </>
               )}
               

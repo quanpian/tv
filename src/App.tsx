@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getHomeSections, getAggregatedSearch, getAggregatedMovieDetail, parseAllSources, fetchDoubanData, fetchCategoryItems, getHistory, addToHistory, removeFromHistory, fetchPersonDetail, initVodSources } from './services/vodService';
@@ -96,8 +97,20 @@ const HeroBanner = React.memo(({ items, onPlay }: { items: VodItem[], onPlay: (i
   );
 });
 
-const HorizontalSection = React.memo(({ title, items, id, onItemClick, onItemContextMenu }: { title: string, items: (VodItem | HistoryItem)[], id: string, onItemClick: (item: VodItem) => void, onItemContextMenu?: (e: React.MouseEvent, item: VodItem) => void }) => {
+const HorizontalSection = React.memo(({ title, items, id, onItemClick, onItemContextMenu, onLoadMore, hasMore }: { title: string, items: (VodItem | HistoryItem)[], id: string, onItemClick: (item: VodItem) => void, onItemContextMenu?: (e: React.MouseEvent, item: VodItem) => void, onLoadMore?: () => void, hasMore?: boolean }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
+    const sentinelRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!onLoadMore || !hasMore) return;
+        const observer = new IntersectionObserver(
+            entries => { if (entries[0].isIntersecting) onLoadMore(); },
+            { root: scrollRef.current, threshold: 0.1 }
+        );
+        if (sentinelRef.current) observer.observe(sentinelRef.current);
+        return () => observer.disconnect();
+    }, [onLoadMore, hasMore, items.length]);
+
     if (!items || items.length === 0) return null;
     const scroll = (direction: 'left' | 'right') => {
         if (scrollRef.current) {
@@ -128,6 +141,7 @@ const HorizontalSection = React.memo(({ title, items, id, onItemClick, onItemCon
                             <h4 className="mt-3 text-sm text-gray-200 font-bold line-clamp-2 group-hover:text-brand transition-colors px-1 leading-snug">{item.vod_name}</h4>
                         </div>
                     ))}
+                    {hasMore && <div ref={sentinelRef} className="flex-shrink-0 w-[140px] md:w-[190px] flex items-center justify-center bg-white/5 rounded-xl border border-dashed border-white/10 text-gray-500 font-black text-xs">加载更多...</div>}
                 </div>
                 <button className="absolute right-0 top-1/2 -translate-y-1/2 z-20 bg-black/70 hover:bg-brand text-white p-2.5 rounded-full opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex border border-white/10 shadow-xl -mr-5" onClick={() => scroll('right')}>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
@@ -144,6 +158,7 @@ const CategoryPage = ({ category, onPlay }: { category: string, onPlay: (item: V
     const [filter1, setFilter1] = useState('全部');
     const [filter2, setFilter2] = useState('全部');
     const [hasMore, setHasMore] = useState(true);
+    const sentinelRef = useRef<HTMLDivElement>(null);
 
     const config = useMemo(() => {
         switch(category) {
@@ -155,22 +170,36 @@ const CategoryPage = ({ category, onPlay }: { category: string, onPlay: (item: V
         }
     }, [category]);
 
-    const loadData = async (reset = false) => {
+    const loadData = useCallback(async (reset = false) => {
+        if (loading) return;
         setLoading(true);
         const curPage = reset ? 1 : page;
-        const res = await fetchCategoryItems(category, { filter1, filter2, page: curPage });
-        if (reset) {
-            setItems(res);
-            setPage(2);
-        } else {
-            setItems(prev => [...prev, ...res]);
-            setPage(prev => prev + 1);
+        try {
+            const res = await fetchCategoryItems(category, { filter1, filter2, page: curPage });
+            if (reset) {
+                setItems(res);
+                setPage(2);
+            } else {
+                setItems(prev => [...prev, ...res]);
+                setPage(prev => prev + 1);
+            }
+            setHasMore(res.length >= 18);
+        } catch (e) {} finally {
+            setLoading(false);
         }
-        setHasMore(res.length >= 18);
-        setLoading(false);
-    };
+    }, [category, filter1, filter2, page, loading]);
 
     useEffect(() => { loadData(true); }, [category, filter1, filter2]);
+
+    useEffect(() => {
+        if (!hasMore || loading) return;
+        const observer = new IntersectionObserver(
+            entries => { if (entries[0].isIntersecting) loadData(); },
+            { threshold: 0.1 }
+        );
+        if (sentinelRef.current) observer.observe(sentinelRef.current);
+        return () => observer.disconnect();
+    }, [hasMore, loading, loadData]);
 
     return (
         <div className="animate-fade-in space-y-8">
@@ -213,13 +242,10 @@ const CategoryPage = ({ category, onPlay }: { category: string, onPlay: (item: V
                 ))}
             </div>
 
-            {hasMore && (
-                <div className="flex justify-center py-10">
-                    <button onClick={() => loadData()} disabled={loading} className="px-10 py-3 rounded-full bg-white/5 hover:bg-brand hover:text-black border border-white/10 text-gray-400 font-black transition-all active:scale-95 disabled:opacity-50">
-                        {loading ? '探索中...' : '发现更多精彩'}
-                    </button>
-                </div>
-            )}
+            <div ref={sentinelRef} className="flex justify-center py-10 min-h-[100px]">
+                {loading && <div className="animate-spin h-8 w-8 border-4 border-brand border-t-transparent rounded-full shadow-2xl"></div>}
+                {!hasMore && items.length > 0 && <span className="text-gray-600 font-black text-xs uppercase tracking-widest opacity-40">已探索全宇宙</span>}
+            </div>
         </div>
     );
 };
@@ -265,6 +291,13 @@ const App: React.FC = () => {
   }, [currentMovie, activeTab, searchQuery, currentEpisodeIndex, episodes]);
 
   useEffect(() => { initVodSources(); setWatchHistory(getHistory()); }, []);
+
+  useEffect(() => {
+    const handleGlobalClick = () => { if (contextMenu.visible) setContextMenu({ ...contextMenu, visible: false }); };
+    window.addEventListener('click', handleGlobalClick);
+    window.addEventListener('scroll', handleGlobalClick, true);
+    return () => { window.removeEventListener('click', handleGlobalClick); window.removeEventListener('scroll', handleGlobalClick, true); };
+  }, [contextMenu.visible]);
 
   useEffect(() => {
        setLoading(true);

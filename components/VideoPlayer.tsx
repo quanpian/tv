@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef, forwardRef, useImperativeHandle, useState } from 'react';
+import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import Artplayer from 'artplayer';
 import artplayerPluginDanmuku from 'artplayer-plugin-danmuku';
 import Hls from 'hls.js';
@@ -22,9 +22,7 @@ const ICONS = {
     skipStart: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#ffffff" width="22" height="22"><path d="M5 4h2v16H5V4zm4 1v14l11-7L9 5z"/></svg>',
     skipEnd: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#ffffff" width="22" height="22"><path d="M5 5l11 7-11 7V5zm12-1h2v16h-2V4z"/></svg>',
     danmaku: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>',
-    next: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>',
-    commentAdd: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M12 2C6.477 2 2 6.477 2 12c0 1.821.487 3.53 1.338 5L2 22l5-1.338C8.47 21.513 10.179 22 12 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm1 14h-2v-3H8v-2h3V8h2v3h3v2h-3v3z"/></svg>',
-    send: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>'
+    next: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>'
 };
 
 const SKIP_OPTIONS = [
@@ -41,6 +39,55 @@ const AD_PATTERNS = [
     'advertisement', 'ignore=', 'guanggao', 'hecheng', 
     '666666', '555555', '999999', 'hl_ad'
 ];
+
+const DANMAKU_API = 'https://daili.laibo123.dpdns.org/5573108/api/v2/comment'; 
+const CACHE_TTL = 15 * 60 * 1000; 
+
+/**
+ * 优化后的弹幕抓取函数：包含缓存、清洗、超时控制
+ */
+const fetchDanmaku = async (title: string, episodeIndex: number, vodId: string | number) => {
+    const cacheKey = `cine_danmaku_${vodId}_${episodeIndex}`;
+    try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            const { data, timestamp } = JSON.parse(cached);
+            if (Date.now() - timestamp < CACHE_TTL) return data;
+        }
+    } catch (e) {}
+
+    try {
+        const response = await fetch(`${DANMAKU_API}/match?name=${encodeURIComponent(title)}&episode=${episodeIndex + 1}`, {
+            signal: AbortSignal.timeout(5000)
+        });
+        if (!response.ok) return [];
+        const result = await response.json();
+        const rawData = result.data || result;
+        if (!Array.isArray(rawData)) return [];
+
+        const formatted = rawData.map((item: any) => {
+            if (Array.isArray(item)) {
+                return {
+                    time: parseFloat(item[0]),
+                    mode: item[1] === 1 ? 0 : (item[1] || 0),
+                    color: typeof item[2] === 'number' ? `#${item[2].toString(16).padStart(6, '0')}` : (item[2] || '#ffffff'),
+                    author: item[3] || 'CineStream',
+                    text: item[4] || ''
+                };
+            }
+            return item;
+        }).filter(d => d.text && d.text.length > 0 && d.text.length < 150);
+
+        try {
+            localStorage.setItem(cacheKey, JSON.stringify({ data: formatted, timestamp: Date.now() }));
+        } catch (e) {
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('cine_danmaku_')) localStorage.removeItem(key);
+            });
+        }
+        return formatted;
+    } catch (e) { return []; }
+};
 
 function filterAdsFromM3U8(m3u8Content: string): string {
     if (!m3u8Content) return '';
@@ -67,8 +114,6 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
   const { url, poster, autoplay = true, onNext, title, episodeIndex = 0, vodId, className } = props;
   const artRef = useRef<Artplayer | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [showDanmakuInput, setShowDanmakuInput] = useState(false);
-  const [danmakuText, setDanmakuText] = useState('');
   
   const propsRef = useRef(props);
   useEffect(() => { propsRef.current = props; }, [props]);
@@ -78,25 +123,45 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
 
   useImperativeHandle(ref, () => ({ getInstance: () => artRef.current }));
 
-  const handleSendDanmaku = () => {
-    if (!danmakuText.trim() || !artRef.current) return;
-    const art = artRef.current;
-    const danmakuPlugin = (art.plugins as any).artplayerPluginDanmuku;
-    if (danmakuPlugin) {
-        danmakuPlugin.emit({ text: danmakuText, color: '#22c55e', style: { border: '1px solid #22c55e', borderRadius: '4px', padding: '2px 8px' } });
-        art.notice.show = '弹幕已发送';
-        setDanmakuText('');
-        setShowDanmakuInput(false);
-    }
+  // 获取当前视频的进度存储 Key
+  const getProgressKey = () => {
+    const p = propsRef.current;
+    return (p.vodId && p.episodeIndex !== undefined) 
+        ? `cine_progress_${p.vodId}_${p.episodeIndex}` 
+        : `cine_progress_url_${btoa(p.url).slice(0, 16)}`;
+  };
+
+  const loadDanmakuAsync = async (art: Artplayer) => {
+      const plugin = (art.plugins as any).artplayerPluginDanmuku;
+      if (!plugin || !propsRef.current.vodId) return;
+
+      const danmaku = await fetchDanmaku(
+          propsRef.current.title || '', 
+          propsRef.current.episodeIndex || 0, 
+          propsRef.current.vodId
+      );
+
+      if (danmaku.length > 0) {
+          plugin.config({ danmuku: danmaku });
+      }
+  };
+
+  // 核心跳转逻辑
+  const seekToSavedProgress = (art: Artplayer) => {
+      const key = getProgressKey();
+      const savedTime = parseFloat(localStorage.getItem(key) || '0');
+      if (savedTime > 5 && (art.duration === 0 || savedTime < art.duration - 10)) {
+          art.seek = savedTime;
+          art.notice.show = `已为您自动续播至 ${Math.floor(savedTime / 60)}:${String(Math.floor(savedTime % 60)).padStart(2, '0')}`;
+      }
   };
 
   useEffect(() => {
       const art = artRef.current;
       if (art && url && url !== art.url) {
           art.switchUrl(url).then(() => {
-              const progressKey = (vodId && episodeIndex !== undefined) ? `cine_progress_${vodId}_${episodeIndex}` : `cine_progress_${url}`;
-              const savedTime = parseFloat(localStorage.getItem(progressKey) || '0');
-              if (savedTime > 5) art.seek = savedTime;
+              seekToSavedProgress(art);
+              loadDanmakuAsync(art);
           });
       }
   }, [url, episodeIndex, vodId]);
@@ -116,12 +181,33 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
               moreVideoAttr: { crossOrigin: 'anonymous', playsInline: true, 'webkit-playsinline': true } as any,
               plugins: [
                   artplayerPluginDanmuku({
-                      danmuku: [], speed: 10, opacity: 0.8, fontSize: 20, visible: true, emitter: false,
+                      danmuku: [], speed: 10, opacity: 0.8, fontSize: 24, visible: true, emitter: false,
                   }),
               ],
               controls: [
-                 { name: 'next-episode', position: 'left', index: 15, html: ICONS.next, tooltip: '下一集', click: function () { if (latestOnNext.current) latestOnNext.current(); } },
-                 { name: 'danmaku-input-toggle', position: 'left', index: 14, html: ICONS.commentAdd, tooltip: '发弹幕', click: function () { setShowDanmakuInput(prev => !prev); } }
+                 { 
+                    name: 'next-episode', 
+                    position: 'left', 
+                    index: 15, 
+                    html: ICONS.next, 
+                    tooltip: '下一集', 
+                    click: function () { if (latestOnNext.current) latestOnNext.current(); } 
+                 },
+                 { 
+                    name: 'danmaku-toggle', 
+                    position: 'right', 
+                    index: 10, 
+                    html: ICONS.danmaku, 
+                    tooltip: '显示/隐藏弹幕', 
+                    click: function () { 
+                        const plugin = (this.plugins as any).artplayerPluginDanmuku;
+                        if (plugin) { 
+                            if (plugin.visible) plugin.hide(); 
+                            else plugin.show(); 
+                            this.notice.show = `弹幕已${plugin.visible ? '显示' : '隐藏'}`;
+                        }
+                    } 
+                 }
               ],
               settings: [
                   { html: '跳过片头', width: 250, tooltip: skipHead+'秒', icon: ICONS.skipStart, selector: SKIP_OPTIONS.map(o => ({ default: o.value === skipHead, html: o.html, url: o.value })), onSelect: function(item: any) { skipHead = item.url; localStorage.setItem('art_skip_head', String(skipHead)); return item.html; } },
@@ -162,17 +248,31 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
           });
 
           art.on('ready', () => {
-              const progressKey = (propsRef.current.vodId && propsRef.current.episodeIndex !== undefined) ? `cine_progress_${propsRef.current.vodId}_${propsRef.current.episodeIndex}` : `cine_progress_${propsRef.current.url}`;
-              const savedTime = parseFloat(localStorage.getItem(progressKey) || '0');
-              if (savedTime > 5 && savedTime < art.duration - 5) art.seek = savedTime;
+              seekToSavedProgress(art);
+              loadDanmakuAsync(art);
           });
 
           art.on('video:timeupdate', function() {
-              const progressKey = (propsRef.current.vodId && propsRef.current.episodeIndex !== undefined) ? `cine_progress_${propsRef.current.vodId}_${propsRef.current.episodeIndex}` : `cine_progress_${propsRef.current.url}`;
-              if (art.currentTime > 0) localStorage.setItem(progressKey, String(art.currentTime));
-              if (skipHead > 0 && art.duration > 300 && art.currentTime < skipHead && !art.userSeek) art.seek = skipHead; 
+              const key = getProgressKey();
+              // 1. 进度记录逻辑
+              if (art.currentTime > 5) {
+                  if (art.duration > 30 && (art.duration - art.currentTime) < 10) {
+                      localStorage.removeItem(key);
+                  } else {
+                      localStorage.setItem(key, String(art.currentTime));
+                  }
+              }
+              // 2. 自动跳过片头
+              if (skipHead > 0 && art.duration > 300 && art.currentTime < skipHead && !art.userSeek) {
+                  art.seek = skipHead;
+                  art.notice.show = `已跳过片头 ${skipHead} 秒`;
+              }
+              // 3. 自动跳过片尾
               if (skipTail > 0 && art.duration > 300 && (art.duration - art.currentTime) <= skipTail && !art.userSeek) {
-                  if (latestOnNext.current) { art.notice.show = '即将播放下一集'; latestOnNext.current(); }
+                  if (latestOnNext.current) { 
+                      localStorage.removeItem(key);
+                      latestOnNext.current(); 
+                  }
               }
           });
 
@@ -185,23 +285,29 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
 
   return (
       <div className={`w-full aspect-video lg:aspect-auto lg:h-full bg-black group relative z-0 ${className || ''}`}>
+          <style>{`
+            .art-bottom { padding: 0 20px 20px !important; background: transparent !important; }
+            .art-controls {
+                background: rgba(15, 23, 42, 0.4) !important;
+                backdrop-filter: blur(32px) saturate(180%) !important;
+                -webkit-backdrop-filter: blur(32px) saturate(180%) !important;
+                border: 1px solid rgba(255, 255, 255, 0.15) !important;
+                border-radius: 24px !important;
+                box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5) !important;
+                height: 60px !important;
+                padding: 0 16px !important;
+            }
+            .art-progress { bottom: 70px !important; height: 5px !important; }
+            .art-progress-indicator { background: #22c55e !important; border: 3px solid #fff !important; width: 16px !important; height: 16px !important; box-shadow: 0 0 15px rgba(34, 197, 94, 0.8) !important; }
+            .art-notice { background: rgba(34, 197, 94, 0.9) !important; border-radius: 100px !important; padding: 12px 28px !important; font-weight: 900 !important; font-size: 14px !important; letter-spacing: 0.1em !important; box-shadow: 0 10px 20px rgba(0,0,0,0.3) !important; }
+            
+            @media (max-width: 768px) {
+                .art-bottom { padding: 0 10px 10px !important; }
+                .art-controls { height: 52px !important; border-radius: 16px !important; }
+                .art-progress { bottom: 62px !important; }
+            }
+          `}</style>
           <div ref={containerRef} className="w-full h-full" />
-          {showDanmakuInput && (
-              <div className="absolute bottom-16 left-1/2 -translate-x-1/2 w-[90%] max-w-lg z-[100] animate-slide-up">
-                  <div className="bg-black/60 backdrop-blur-xl border border-brand/30 rounded-full p-1.5 flex gap-2 shadow-2xl items-center">
-                      <input 
-                        type="text" value={danmakuText} onChange={(e) => setDanmakuText(e.target.value)} 
-                        onKeyDown={(e) => e.key === 'Enter' && handleSendDanmaku()} 
-                        placeholder="发条友善的弹幕吧..." 
-                        className="flex-1 bg-transparent border-none outline-none text-white px-4 py-1.5 text-sm" autoFocus 
-                      />
-                      <button onClick={handleSendDanmaku} disabled={!danmakuText.trim()} className="bg-brand text-black p-2 rounded-full transition-all active:scale-95 disabled:opacity-50">
-                        {ICONS.send}
-                      </button>
-                      <button onClick={() => setShowDanmakuInput(false)} className="text-gray-400 hover:text-white px-3 py-1.5 text-xs">取消</button>
-                  </div>
-              </div>
-          )}
       </div>
   );
 });
