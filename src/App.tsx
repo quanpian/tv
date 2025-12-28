@@ -22,6 +22,7 @@ const NavIcons = {
 
 const URL_TO_TAB: Record<string, string> = { '': 'home', 'dianying': 'movies', 'dianshiju': 'series', 'dongman': 'anime', 'zongyi': 'variety', 'sousuo': 'search' };
 const TAB_TO_URL: Record<string, string> = { 'home': '/', 'movies': '/dianying', 'series': '/dianshiju', 'anime': '/dongman', 'variety': '/zongyi', 'search': '/sousuo' };
+const TAB_NAME: Record<string, string> = { 'home': '首页', 'movies': '电影', 'series': '剧集', 'anime': '动漫', 'variety': '综艺', 'search': '搜索' };
 
 const CategoryPage = ({ category, onPlay }: { category: string, onPlay: (item: VodItem) => void }) => {
     const [items, setItems] = useState<VodItem[]>([]);
@@ -34,17 +35,23 @@ const CategoryPage = ({ category, onPlay }: { category: string, onPlay: (item: V
 
     const config = useMemo(() => {
         switch(category) {
-            case 'movies': return { title: '电影', sub: '来自豆瓣的精选内容', f1: ['全部', '热门电影', '最新电影', '豆瓣高分', '冷门佳片'], f2Label: '地区', f2: ['全部', '华语', '欧美', '韩国', '日本'] };
-            case 'series': return { title: '电视剧', sub: '来自豆瓣的精选内容', f1: ['全部', '最近热门'], f2Label: '类型', f2: ['全部', '国产', '欧美', '日本', '韩国', '动漫', '纪录片'] };
-            case 'anime': return { title: '动漫', sub: '来自 Bangumi 番组计划的精选内容', f1: ['全部', '每日放送', '番剧', '剧场版'], f2Label: '星期', f2: ['全部', '周一', '周二', '周三', '周四', '周五', '周六', '周日'] };
-            case 'variety': return { title: '综艺', sub: '来自豆瓣的精选内容', f1: ['全部', '最近热门'], f2Label: '类型', f2: ['全部', '国内', '国外'] };
+            case 'movies': return { title: '电影', sub: '发现精彩好片', f1: ['全部', '最新电影', '豆瓣高分', '动作', '科幻'], f2Label: '地区', f2: ['全部', '华语', '欧美', '韩国', '日本'] };
+            case 'series': return { title: '剧集', sub: '全网热播追剧', f1: ['全部', '最近热门', '国产', '欧美', '韩剧'], f2Label: '类型', f2: ['全部', '都市', '武侠', '古装', '犯罪'] };
+            case 'anime': return { title: '动漫', sub: '次元世界入口', f1: ['全部', '日本动画', '国产动漫', '剧场版'], f2Label: '星期', f2: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'] };
+            case 'variety': return { title: '综艺', sub: '欢度休闲时光', f1: ['全部', '大陆综艺', '港台综艺', '日韩综艺'], f2Label: '类型', f2: ['全部', '真人秀', '访谈', '选秀'] };
             default: return { title: '频道', sub: '', f1: [], f2Label: '', f2: [] };
         }
     }, [category]);
 
-    useEffect(() => {
-        setItems([]); setPage(1); setHasMore(true); loadData(true, 1);
+    // 重置逻辑：当分类或筛选改变时，清空并从第一页开始
+    const resetAndLoad = useCallback(async () => {
+        setItems([]);
+        setPage(1);
+        setHasMore(true);
+        loadData(true, 1);
     }, [category, filter1, filter2]);
+
+    useEffect(() => { resetAndLoad(); }, [category, filter1, filter2]);
 
     const loadData = useCallback(async (reset = false, targetPage?: number) => {
         if (loading) return;
@@ -52,44 +59,81 @@ const CategoryPage = ({ category, onPlay }: { category: string, onPlay: (item: V
         const curPage = targetPage || page;
         try {
             const res = await fetchCategoryItems(category, { filter1, filter2, page: curPage });
-            if (reset) { setItems(res); setPage(2); } else { setItems(prev => [...prev, ...res]); setPage(prev => prev + 1); }
-            setHasMore(res.length > 0 && res.length >= 18);
-        } catch (e) { console.error(e); } finally { setLoading(false); }
+            if (reset) {
+                setItems(res);
+                setPage(2);
+            } else {
+                setItems(prev => [...prev, ...res]);
+                setPage(prev => prev + 1);
+            }
+            setHasMore(res.length >= 15);
+        } catch (e) {
+            console.error('Category load error', e);
+        } finally {
+            setLoading(false);
+        }
     }, [category, filter1, filter2, page, loading]);
 
     useEffect(() => {
         if (!hasMore || loading) return;
-        const observer = new IntersectionObserver(entries => { if (entries[0].isIntersecting) loadData(); }, { threshold: 0.1, rootMargin: '400px' });
+        const observer = new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting) loadData();
+        }, { threshold: 0.1, rootMargin: '400px' });
         if (sentinelRef.current) observer.observe(sentinelRef.current);
         return () => observer.disconnect();
     }, [hasMore, loading, loadData, items.length]);
 
     return (
-        <div className="animate-fade-in space-y-8">
-            <header className="px-1"><h1 className="text-3xl md:text-4xl font-black text-white mb-2">{config.title}</h1><p className="text-gray-500 font-bold">{config.sub}</p></header>
-            <section className="bg-white/5 backdrop-blur-3xl border border-white/5 rounded-3xl p-6 md:p-8 space-y-6 ring-1 ring-white/10 shadow-3xl">
+        <div className="animate-fade-in space-y-8 min-h-[600px]">
+            <header className="px-1">
+                <h1 className="text-3xl md:text-4xl font-black text-white mb-2">{config.title}</h1>
+                <p className="text-gray-500 font-bold">{config.sub}</p>
+            </header>
+
+            <section className="bg-white/5 backdrop-blur-3xl border border-white/5 rounded-2xl p-6 md:p-8 space-y-6 ring-1 ring-white/10 shadow-3xl">
                 <div className="flex items-center gap-6 overflow-x-auto no-scrollbar pb-1">
-                    <span className="text-gray-500 font-bold text-sm flex-shrink-0">排序</span>
-                    <div className="flex gap-2">{config.f1.map(f => (<button key={f} onClick={() => setFilter1(f)} className={`px-5 py-2 rounded-2xl text-sm font-black transition-all whitespace-nowrap ${filter1 === f ? 'bg-white/10 text-brand ring-1 ring-brand/40' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>{f}</button>))}</div>
+                    <span className="text-gray-500 font-bold text-xs uppercase tracking-widest flex-shrink-0">Filter</span>
+                    <div className="flex gap-2">
+                        {config.f1.map(f => (
+                            <button key={f} onClick={() => setFilter1(f)} className={`px-5 py-2 rounded-xl text-sm font-black transition-all whitespace-nowrap ${filter1 === f ? 'bg-brand text-black shadow-lg shadow-brand/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>{f}</button>
+                        ))}
+                    </div>
                 </div>
                 <div className="flex items-center gap-6 overflow-x-auto no-scrollbar">
-                    <span className="text-gray-500 font-bold text-sm flex-shrink-0">{config.f2Label}</span>
-                    <div className="flex gap-2">{config.f2.map(f => (<button key={f} onClick={() => setFilter2(f)} className={`px-5 py-2 rounded-2xl text-sm font-black transition-all whitespace-nowrap ${filter2 === f ? 'bg-white/10 text-brand ring-1 ring-brand/40' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>{f}</button>))}</div>
+                    <span className="text-gray-500 font-bold text-xs uppercase tracking-widest flex-shrink-0">{config.f2Label}</span>
+                    <div className="flex gap-2">
+                        {config.f2.map(f => (
+                            <button key={f} onClick={() => setFilter2(f)} className={`px-5 py-2 rounded-xl text-sm font-black transition-all whitespace-nowrap ${filter2 === f ? 'bg-brand text-black shadow-lg shadow-brand/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>{f}</button>
+                        ))}
+                    </div>
                 </div>
             </section>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-                {items.map((item, idx) => (
-                    <div key={`${item.vod_id}-${idx}`} onClick={() => onPlay(item)} className="group cursor-pointer bg-[#0f111a] rounded-2xl overflow-hidden aspect-[2/3] relative border border-white/5 hover:border-brand/60 transition-all duration-500 shadow-2xl hover:-translate-y-2 ring-1 ring-white/10 flex flex-col">
-                        <ImageWithFallback src={item.vod_pic} alt={item.vod_name} searchKeyword={item.vod_name} size="m" className="w-full aspect-[2/3] object-cover transition-transform duration-1000 group-hover:scale-110" />
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/90 to-transparent p-4 pt-16 mt-auto">
-                            <h4 className="text-sm font-black text-white line-clamp-1 group-hover:text-brand transition-colors">{item.vod_name}</h4>
-                            <div className="flex justify-between items-center mt-2 text-[10px] font-black text-gray-500"><span>{item.vod_year || '2025'}</span><span className="text-brand">{item.vod_score || ''}</span></div>
+
+            {items.length === 0 && !loading ? (
+                <div className="flex flex-col items-center justify-center py-40 text-gray-500 gap-4 opacity-50">
+                    <div className="w-12 h-12 border-2 border-dashed border-gray-600 rounded-full animate-spin"></div>
+                    <p className="font-black text-xs uppercase tracking-widest">正在重新探索宇宙资源...</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                    {items.map((item, idx) => (
+                        <div key={`${item.vod_id}-${idx}`} onClick={() => onPlay(item)} className="group cursor-pointer bg-[#0f111a] rounded-2xl overflow-hidden aspect-[2/3] relative border border-white/5 hover:border-brand/40 transition-all duration-500 shadow-2xl hover:-translate-y-1 flex flex-col">
+                            <ImageWithFallback src={item.vod_pic} alt={item.vod_name} searchKeyword={item.vod_name} size="m" className="w-full aspect-[2/3] object-cover transition-transform duration-1000 group-hover:scale-110" />
+                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/80 to-transparent p-4 pt-12 mt-auto">
+                                <h4 className="text-sm font-black text-white line-clamp-1 group-hover:text-brand transition-colors">{item.vod_name}</h4>
+                                <div className="flex justify-between items-center mt-2 text-[10px] font-black text-gray-500">
+                                    <span>{item.vod_year || '2025'}</span>
+                                    <span className="text-brand">{item.vod_score || ''}</span>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                ))}
-            </div>
-            <div ref={sentinelRef} className="flex justify-center py-10 min-h-[100px]">
-                {loading && <div className="animate-spin h-10 w-10 border-4 border-brand border-t-transparent rounded-full shadow-2xl"></div>}
+                    ))}
+                </div>
+            )}
+
+            <div ref={sentinelRef} className="flex justify-center py-20">
+                {loading && <div className="animate-spin h-8 w-8 border-4 border-brand border-t-transparent rounded-full shadow-2xl"></div>}
+                {!hasMore && items.length > 0 && <span className="text-gray-600 font-black text-[10px] uppercase tracking-[0.2em] opacity-30">All Universe Explored</span>}
             </div>
         </div>
     );
@@ -99,7 +143,6 @@ const App: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [loading, setLoading] = useState(false);
-  const [searchResults, setSearchResults] = useState<VodItem[]>([]);
   const [currentMovie, setCurrentMovie] = useState<VodDetail | null>(null);
   const [availableSources, setAvailableSources] = useState<PlaySource[]>([]);
   const [currentSourceIndex, setCurrentSourceIndex] = useState(0);
@@ -110,23 +153,22 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('home');
   const [showSettings, setShowSettings] = useState(false);
-  const resultsRef = useRef<HTMLDivElement>(null);
   const [homeSections, setHomeSections] = useState<any>({});
   const [heroItems, setHeroItems] = useState<VodItem[]>([]);
   const [watchHistory, setWatchHistory] = useState<HistoryItem[]>([]);
   
   useEffect(() => { initVodSources(); setWatchHistory(getHistory()); }, []);
+  
   useEffect(() => {
        getHomeSections().then(initialData => {
            if (initialData) {
                setHomeSections(initialData);
                const allItems = [ ...(initialData.movies || []), ...(initialData.series || []), ...(initialData.anime || []) ];
-               setHeroItems(allItems.slice(0, 15));
+               setHeroItems(allItems.slice(0, 12));
            }
        });
   }, []);
 
-  // 检测是否处于播放视图
   const isPlayView = location.pathname.startsWith('/play/');
 
   useEffect(() => {
@@ -167,9 +209,7 @@ const App: React.FC = () => {
   };
 
   const handleItemClick = (item: VodItem) => {
-      // 1. 立即设置 loading
       setLoading(true);
-      // 2. 立即跳转，不等待接口
       navigate(`/play/${item.vod_id}`, { state: { apiUrl: item.api_url, vodName: item.vod_name } });
   };
 
@@ -177,17 +217,24 @@ const App: React.FC = () => {
       <div className="relative min-h-screen pb-24 lg:pb-16 overflow-x-hidden pt-14 lg:pt-20">
           <nav className="fixed top-0 left-0 right-0 z-50 bg-[#020617]/90 backdrop-blur-3xl border-b border-white/5 hidden lg:block">
                 <div className="container mx-auto max-w-[1400px] flex items-center justify-between h-16 px-6">
-                    <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}><span className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-brand to-cyan-400">CineStream</span></div>
+                    <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
+                        <div className="w-8 h-8 bg-brand rounded-lg flex items-center justify-center text-black font-black">C</div>
+                        <span className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-brand to-cyan-400">CineStream</span>
+                    </div>
                     <div className="flex items-center gap-1">
-                        {['home', 'movies', 'series', 'anime', 'variety', 'search'].map(id => (
-                            <button key={id} onClick={() => navigate(TAB_TO_URL[id] || '/')} className={`px-5 py-2.5 rounded-full text-sm font-black transition-all ${activeTab === id ? 'bg-brand text-black shadow-2xl shadow-brand/20' : 'text-gray-400 hover:text-white'}`}>
-                                {id.toUpperCase()}
+                        {['home', 'movies', 'series', 'anime', 'variety'].map(id => (
+                            <button key={id} onClick={() => navigate(TAB_TO_URL[id] || '/')} className={`px-5 py-2.5 rounded-full text-xs font-black transition-all tracking-widest uppercase ${activeTab === id ? 'bg-brand text-black shadow-xl shadow-brand/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
+                                {id}
                             </button>
                         ))}
+                        <button onClick={() => navigate('/sousuo')} className={`p-2.5 rounded-full transition-all ${activeTab === 'search' ? 'text-brand bg-white/5' : 'text-gray-400 hover:text-white'}`}>
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
+                        </button>
                     </div>
-                    <button onClick={() => setShowSettings(true)} className="text-gray-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-all">设置</button>
+                    <button onClick={() => setShowSettings(true)} className="text-gray-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-all font-bold text-xs uppercase tracking-widest">Settings</button>
                 </div>
           </nav>
+          
           <Suspense fallback={null}><SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} /></Suspense>
           
           <div className="relative z-10 container mx-auto px-4 lg:px-10 py-4 max-w-[1600px]">
@@ -198,10 +245,10 @@ const App: React.FC = () => {
                               {loading && !currentMovie ? (
                                   <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center gap-4 animate-pulse">
                                       <div className="w-12 h-12 border-4 border-brand border-t-transparent rounded-full animate-spin"></div>
-                                      <span className="text-gray-500 font-black text-xs tracking-widest uppercase">资源深度检索中...</span>
+                                      <span className="text-gray-500 font-black text-[10px] tracking-widest uppercase">Deep Retrieving Resources...</span>
                                   </div>
                               ) : (
-                                  <Suspense fallback={<div className="w-full h-full bg-black flex items-center justify-center animate-pulse"><div className="w-12 h-12 border-4 border-brand border-t-transparent rounded-full animate-spin"></div></div>}>
+                                  <Suspense fallback={<div className="w-full h-full bg-black"></div>}>
                                       <VideoPlayer 
                                         url={currentMovie ? availableSources[currentSourceIndex]?.episodes[currentEpisodeIndex]?.url : ''} 
                                         poster={currentMovie?.vod_pic} 
@@ -216,8 +263,8 @@ const App: React.FC = () => {
                           {showSidePanel && currentMovie && (
                               <div className="w-full lg:w-[380px] flex flex-col border-l border-white/10 bg-[#0f111a]/80 backdrop-blur-3xl h-[450px] lg:h-auto animate-fade-in">
                                   <div className="flex bg-black/20">
-                                      <button onClick={() => setSidePanelTab('episodes')} className={`flex-1 py-4 text-xs font-black transition-all ${sidePanelTab === 'episodes' ? 'text-brand border-b-2 border-brand' : 'text-gray-500'}`}>选集</button>
-                                      <button onClick={() => setSidePanelTab('sources')} className={`flex-1 py-4 text-xs font-black transition-all ${sidePanelTab === 'sources' ? 'text-brand border-b-2 border-brand' : 'text-gray-500'}`}>播放源</button>
+                                      <button onClick={() => setSidePanelTab('episodes')} className={`flex-1 py-4 text-[10px] font-black tracking-widest uppercase transition-all ${sidePanelTab === 'episodes' ? 'text-brand border-b-2 border-brand' : 'text-gray-500'}`}>Episodes</button>
+                                      <button onClick={() => setSidePanelTab('sources')} className={`flex-1 py-4 text-[10px] font-black tracking-widest uppercase transition-all ${sidePanelTab === 'sources' ? 'text-brand border-b-2 border-brand' : 'text-gray-500'}`}>Sources</button>
                                   </div>
                                   <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
                                       {sidePanelTab === 'episodes' ? ( 
@@ -227,7 +274,7 @@ const App: React.FC = () => {
                                       ) : ( 
                                           <div className="space-y-3">{availableSources.map((source, idx) => ( 
                                               <button key={idx} onClick={() => { setCurrentSourceIndex(idx); setEpisodes(source.episodes); setSidePanelTab('episodes'); }} className={`w-full text-left p-4 rounded-2xl border transition-all ${currentSourceIndex === idx ? 'bg-brand/10 border-brand/40 text-brand' : 'bg-white/5 border-white/5 text-gray-400'}`}>
-                                                  <div className="font-black text-xs truncate">{source.name}</div>
+                                                  <div className="font-black text-xs truncate uppercase tracking-tight">{source.name}</div>
                                               </button> ))}
                                           </div> 
                                       )}
@@ -236,23 +283,25 @@ const App: React.FC = () => {
                           )}
                       </div>
                       {currentMovie && <MovieInfoCard movie={currentMovie} />}
-                      <Suspense fallback={null}><GeminiChat currentMovie={currentMovie} /></Suspense>
                   </section>
               )}
 
               {activeTab === 'home' && !isPlayView && (
                   <div className="space-y-4">
                       {['movies', 'series', 'variety', 'anime'].map(cat => (
-                        <div key={cat} className="mb-10">
-                            <h3 className="text-2xl font-black text-white mb-5 border-l-4 border-brand pl-4 tracking-tight uppercase">{cat}</h3>
+                        <div key={cat} className="mb-12">
+                            <h3 className="text-2xl font-black text-white mb-6 border-l-4 border-brand pl-4 tracking-tight uppercase flex items-center justify-between">
+                                <span>{cat}</span>
+                                <button onClick={() => navigate(TAB_TO_URL[cat])} className="text-[10px] text-gray-500 hover:text-brand tracking-[0.2em] transition-colors">MORE +</button>
+                            </h3>
                             <div className="flex gap-4 md:gap-6 overflow-x-auto pb-6 no-scrollbar snap-x">
                                 {(homeSections[cat] || []).map((item: any, i: number) => (
-                                    <div key={i} onClick={() => handleItemClick(item)} className="flex-shrink-0 w-[140px] md:w-[190px] cursor-pointer snap-start group">
-                                        <div className="aspect-[2/3] rounded-xl overflow-hidden relative border border-white/5 group-hover:border-brand/50 transition-all">
-                                            <ImageWithFallback src={item.vod_pic} alt={item.vod_name} size="m" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
-                                            <div className="absolute top-2 right-2 bg-black/60 px-2 py-0.5 rounded text-[10px] font-bold">{item.vod_remarks}</div>
+                                    <div key={i} onClick={() => handleItemClick(item)} className="flex-shrink-0 w-[140px] md:w-[200px] cursor-pointer snap-start group flex flex-col">
+                                        <div className="aspect-[2/3] rounded-2xl overflow-hidden relative border border-white/5 group-hover:border-brand/40 transition-all duration-500 shadow-xl">
+                                            <ImageWithFallback src={item.vod_pic} alt={item.vod_name} size="m" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                                            <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md px-2 py-0.5 rounded-lg text-[9px] font-black text-white border border-white/10 uppercase">{item.vod_remarks}</div>
                                         </div>
-                                        <h4 className="mt-3 text-sm font-bold truncate group-hover:text-brand">{item.vod_name}</h4>
+                                        <h4 className="mt-4 text-sm font-black text-gray-200 truncate group-hover:text-brand transition-colors tracking-tight">{item.vod_name}</h4>
                                     </div>
                                 ))}
                             </div>
