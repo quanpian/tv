@@ -125,7 +125,7 @@ const HorizontalSection = React.memo(({ title, items, id, onItemClick, onItemCon
                                 {(item as any).vod_score && <div className="absolute bottom-2 right-2 text-brand font-black text-xs drop-shadow-2xl">{(item as any).vod_score}</div>}
                                 {(item as HistoryItem).episode_name && ( <div className="absolute bottom-0 left-0 right-0 bg-brand/95 text-black text-[10px] font-black px-2 py-1.5 text-center truncate">上次: {(item as HistoryItem).episode_name}</div> )}
                             </div>
-                            <h4 className="mt-3 text-sm text-gray-200 font-bold truncate group-hover:text-brand transition-colors px-1">{item.vod_name}</h4>
+                            <h4 className="mt-3 text-sm text-gray-200 font-bold line-clamp-2 group-hover:text-brand transition-colors px-1 leading-snug">{item.vod_name}</h4>
                         </div>
                     ))}
                 </div>
@@ -200,10 +200,10 @@ const CategoryPage = ({ category, onPlay }: { category: string, onPlay: (item: V
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
                 {items.map((item) => (
-                    <div key={item.vod_id} onClick={() => onPlay(item)} className="group cursor-pointer bg-[#0f111a] rounded-2xl overflow-hidden aspect-[2/3] relative border border-white/5 hover:border-brand/60 transition-all duration-500 shadow-2xl hover:-translate-y-2 ring-1 ring-white/10">
-                        <ImageWithFallback src={item.vod_pic} alt={item.vod_name} searchKeyword={item.vod_name} size="m" className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" />
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/90 to-transparent p-4 pt-16">
-                            <h4 className="text-sm font-black text-white truncate group-hover:text-brand transition-colors">{item.vod_name}</h4>
+                    <div key={item.vod_id} onClick={() => onPlay(item)} className="group cursor-pointer bg-[#0f111a] rounded-2xl overflow-hidden aspect-[2/3] relative border border-white/5 hover:border-brand/60 transition-all duration-500 shadow-2xl hover:-translate-y-2 ring-1 ring-white/10 flex flex-col">
+                        <ImageWithFallback src={item.vod_pic} alt={item.vod_name} searchKeyword={item.vod_name} size="m" className="w-full aspect-[2/3] object-cover transition-transform duration-1000 group-hover:scale-110" />
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/90 to-transparent p-4 pt-16 mt-auto">
+                            <h4 className="text-sm font-black text-white line-clamp-1 group-hover:text-brand transition-colors">{item.vod_name}</h4>
                             <div className="flex justify-between items-center mt-2 text-[10px] font-black text-gray-500 uppercase">
                                 <span>{item.vod_year || '2025'}</span>
                                 <span className="text-brand">{item.vod_score || ''}</span>
@@ -446,10 +446,10 @@ const App: React.FC = () => {
                                   {searchResults.length > 0 ? (
                                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
                                           {searchResults.map((item) => (
-                                              <div key={item.vod_id} onClick={() => handleItemClick(item)} className="group cursor-pointer bg-[#0f111a] rounded-2xl overflow-hidden aspect-[2/3] relative border border-white/5 hover:border-brand/60 transition-all duration-500 shadow-2xl hover:-translate-y-2 ring-1 ring-white/10">
-                                                  <ImageWithFallback src={item.vod_pic || ''} alt={item.vod_name} searchKeyword={item.vod_name} className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" />
-                                                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/90 to-transparent p-4 pt-16">
-                                                      <h4 className="text-sm lg:text-base font-black text-white truncate group-hover:text-brand transition-colors">{item.vod_name}</h4>
+                                              <div key={item.vod_id} onClick={() => handleItemClick(item)} className="group cursor-pointer bg-[#0f111a] rounded-2xl overflow-hidden aspect-[2/3] relative border border-white/5 hover:border-brand/60 transition-all duration-500 shadow-2xl hover:-translate-y-2 ring-1 ring-white/10 flex flex-col">
+                                                  <ImageWithFallback src={item.vod_pic || ''} alt={item.vod_name} searchKeyword={item.vod_name} className="w-full aspect-[2/3] object-cover transition-transform duration-1000 group-hover:scale-110" />
+                                                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/90 to-transparent p-4 pt-16 mt-auto">
+                                                      <h4 className="text-sm lg:text-base font-black text-white line-clamp-1 group-hover:text-brand transition-colors">{item.vod_name}</h4>
                                                       <div className="flex justify-between items-center mt-2 text-[10px] font-black text-gray-500 uppercase"><span>{item.vod_year || '2025'}</span><span className="bg-white/10 px-2 py-0.5 rounded-full">{item.type_name || 'Movie'}</span></div>
                                                   </div>
                                               </div>
