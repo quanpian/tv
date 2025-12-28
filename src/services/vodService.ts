@@ -297,8 +297,9 @@ const fetchCmsData = async (baseUrl: string, params: URLSearchParams): Promise<a
 /**
  * FETCH DOUBAN JSON
  */
-const fetchDoubanJson = async (type: string, tag: string, limit = 12, sort = 'recommend'): Promise<VodItem[]> => {
-    const start = sort === 'recommend' ? Math.floor(Math.random() * 5) : 0; 
+const fetchDoubanJson = async (type: string, tag: string, limit = 12, sort = 'recommend', startOffset?: number): Promise<VodItem[]> => {
+    // Correctly handle pagination offset if provided.
+    const start = startOffset !== undefined ? startOffset : (sort === 'recommend' ? Math.floor(Math.random() * 5) : 0); 
     const doubanUrl = `https://movie.douban.com/j/search_subjects?type=${type}&tag=${encodeURIComponent(tag)}&sort=${sort}&page_limit=${limit}&page_start=${start}`;
     
     try {
@@ -382,12 +383,14 @@ export const getHomeSections = async () => {
     return { movies, series, shortDrama, anime, variety };
 };
 
+// Fix: Added 'page' property to the options type to resolve TypeScript error in App.tsx.
+// Also updated implementation to handle pagination correctly.
 export const fetchCategoryItems = async (
     category: string, 
-    options: { filter1?: string, filter2?: string } = {}
+    options: { filter1?: string, filter2?: string, page?: number } = {}
 ): Promise<VodItem[]> => {
     
-    const { filter1 = '全部', filter2 = '全部' } = options;
+    const { filter1 = '全部', filter2 = '全部', page = 1 } = options;
     let type = 'movie';
     let tag = '热门';
     let sort = 'recommend';
@@ -429,7 +432,10 @@ export const fetchCategoryItems = async (
             return [];
     }
 
-    const items = await fetchDoubanJson(type, tag, 60, sort);
+    // Handle pagination limit and start offset for Douban API calls.
+    const limit = 18;
+    const start = (page - 1) * limit;
+    const items = await fetchDoubanJson(type, tag, limit, sort, start);
     if (items.length === 0 && category === 'movies') return FALLBACK_MOVIES;
     if (items.length === 0 && category === 'series') return FALLBACK_SERIES;
     

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { getHomeSections, searchCms, getAggregatedSearch, getAggregatedMovieDetail, parseAllSources, enrichVodDetail, fetchDoubanData, fetchCategoryItems, getHistory, addToHistory, removeFromHistory, fetchPersonDetail, initVodSources } from './services/vodService';
+import { getHomeSections, getAggregatedSearch, getAggregatedMovieDetail, parseAllSources, fetchDoubanData, fetchCategoryItems, getHistory, addToHistory, removeFromHistory, fetchPersonDetail, initVodSources } from './services/vodService';
 import MovieInfoCard from './components/MovieInfoCard';
 import ImageWithFallback from './components/ImageWithFallback';
 import { VodItem, VodDetail, Episode, PlaySource, HistoryItem, PersonDetail } from './types';
@@ -136,6 +136,93 @@ const HorizontalSection = React.memo(({ title, items, id, onItemClick, onItemCon
         </div>
     );
 });
+
+const CategoryPage = ({ category, onPlay }: { category: string, onPlay: (item: VodItem) => void }) => {
+    const [items, setItems] = useState<VodItem[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [page, setPage] = useState(1);
+    const [filter1, setFilter1] = useState('全部');
+    const [filter2, setFilter2] = useState('全部');
+    const [hasMore, setHasMore] = useState(true);
+
+    const config = useMemo(() => {
+        switch(category) {
+            case 'movies': return { title: '电影', sub: '来自豆瓣的精选内容', f1: ['全部', '热门电影', '最新电影', '豆瓣高分', '冷门佳片'], f2Label: '地区', f2: ['全部', '华语', '欧美', '韩国', '日本'] };
+            case 'series': return { title: '电视剧', sub: '来自豆瓣的精选内容', f1: ['全部', '最近热门'], f2Label: '类型', f2: ['全部', '国产', '欧美', '日本', '韩国', '动漫', '纪录片'] };
+            case 'anime': return { title: '动漫', sub: '来自 Bangumi 番组计划的精选内容', f1: ['每日放送', '番剧', '剧场版'], f2Label: '星期', f2: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'] };
+            case 'variety': return { title: '综艺', sub: '来自豆瓣的精选内容', f1: ['全部', '最近热门'], f2Label: '类型', f2: ['全部', '国内', '国外'] };
+            default: return { title: '频道', sub: '', f1: [], f2Label: '', f2: [] };
+        }
+    }, [category]);
+
+    const loadData = async (reset = false) => {
+        setLoading(true);
+        const curPage = reset ? 1 : page;
+        const res = await fetchCategoryItems(category, { filter1, filter2, page: curPage });
+        if (reset) {
+            setItems(res);
+            setPage(2);
+        } else {
+            setItems(prev => [...prev, ...res]);
+            setPage(prev => prev + 1);
+        }
+        setHasMore(res.length >= 18);
+        setLoading(false);
+    };
+
+    useEffect(() => { loadData(true); }, [category, filter1, filter2]);
+
+    return (
+        <div className="animate-fade-in space-y-8">
+            <header className="px-1">
+                <h1 className="text-3xl md:text-4xl font-black text-white mb-2">{config.title}</h1>
+                <p className="text-gray-500 font-bold">{config.sub}</p>
+            </header>
+
+            <section className="bg-white/5 backdrop-blur-3xl border border-white/5 rounded-3xl p-6 md:p-8 space-y-6 ring-1 ring-blue-500/10 shadow-3xl">
+                <div className="flex items-center gap-6 overflow-x-auto no-scrollbar pb-1">
+                    <span className="text-gray-500 font-bold text-sm flex-shrink-0">分类</span>
+                    <div className="flex gap-2">
+                        {config.f1.map(f => (
+                            <button key={f} onClick={() => setFilter1(f)} className={`px-5 py-2 rounded-2xl text-sm font-black transition-all whitespace-nowrap ${filter1 === f ? 'bg-white/10 text-brand ring-1 ring-brand/40' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>{f}</button>
+                        ))}
+                    </div>
+                </div>
+                <div className="flex items-center gap-6 overflow-x-auto no-scrollbar">
+                    <span className="text-gray-500 font-bold text-sm flex-shrink-0">{config.f2Label}</span>
+                    <div className="flex gap-2">
+                        {config.f2.map(f => (
+                            <button key={f} onClick={() => setFilter2(f)} className={`px-5 py-2 rounded-2xl text-sm font-black transition-all whitespace-nowrap ${filter2 === f ? 'bg-white/10 text-brand ring-1 ring-brand/40' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>{f}</button>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                {items.map((item) => (
+                    <div key={item.vod_id} onClick={() => onPlay(item)} className="group cursor-pointer bg-[#0f111a] rounded-2xl overflow-hidden aspect-[2/3] relative border border-white/5 hover:border-brand/60 transition-all duration-500 shadow-2xl hover:-translate-y-2 ring-1 ring-white/10">
+                        <ImageWithFallback src={item.vod_pic} alt={item.vod_name} searchKeyword={item.vod_name} size="m" className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" />
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/90 to-transparent p-4 pt-16">
+                            <h4 className="text-sm font-black text-white truncate group-hover:text-brand transition-colors">{item.vod_name}</h4>
+                            <div className="flex justify-between items-center mt-2 text-[10px] font-black text-gray-500 uppercase">
+                                <span>{item.vod_year || '2025'}</span>
+                                <span className="text-brand">{item.vod_score || ''}</span>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {hasMore && (
+                <div className="flex justify-center py-10">
+                    <button onClick={() => loadData()} disabled={loading} className="px-10 py-3 rounded-full bg-white/5 hover:bg-brand hover:text-black border border-white/10 text-gray-400 font-black transition-all active:scale-95 disabled:opacity-50">
+                        {loading ? '探索中...' : '发现更多精彩'}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
 
 const App: React.FC = () => {
   const navigate = useNavigate();
@@ -339,6 +426,11 @@ const App: React.FC = () => {
                       <HorizontalSection title="热门动漫" items={homeSections.anime} id="anime" onItemClick={handleItemClick} />
                   </div>
               )}
+
+              {['movies', 'series', 'anime', 'variety'].includes(activeTab) && !currentMovie && (
+                  <CategoryPage category={activeTab} onPlay={handleItemClick} />
+              )}
+
               {activeTab === 'search' && !currentMovie && (
                   <div className="animate-fade-in max-w-5xl mx-auto py-6">
                       <div className="flex gap-4 mb-10">
