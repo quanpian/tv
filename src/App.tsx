@@ -24,6 +24,7 @@ const URL_TO_TAB: Record<string, string> = { '': 'home', 'dianying': 'movies', '
 const TAB_TO_URL: Record<string, string> = { 'home': '/', 'movies': '/dianying', 'series': '/dianshiju', 'anime': '/dongman', 'variety': '/zongyi', 'search': '/sousuo' };
 const TAB_NAME: Record<string, string> = { 'home': '首页', 'movies': '电影', 'series': '剧集', 'anime': '动漫', 'variety': '综艺', 'search': '搜索' };
 
+// ... HeroBanner and HorizontalSection component definitions remain the same ...
 const HeroBanner = React.memo(({ items, onPlay }: { items: VodItem[], onPlay: (item: VodItem) => void }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [detail, setDetail] = useState<any>(null);
@@ -138,7 +139,6 @@ const HorizontalSection = React.memo(({ title, items, id, onItemClick, onItemCon
     );
 });
 
-// Fix: Added the missing CategoryPage component definition
 const CategoryPage = ({ category, onPlay }: { category: string, onPlay: (item: VodItem) => void }) => {
   const [items, setItems] = useState<VodItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -148,7 +148,7 @@ const CategoryPage = ({ category, onPlay }: { category: string, onPlay: (item: V
   useEffect(() => {
     setPage(1);
     setItems([]);
-  }, [category, filters]);
+  }, [category, filters.filter1]);
 
   useEffect(() => {
     setLoading(true);
@@ -157,16 +157,16 @@ const CategoryPage = ({ category, onPlay }: { category: string, onPlay: (item: V
       else setItems(prev => [...prev, ...res]);
       setLoading(false);
     });
-  }, [category, filters, page]);
+  }, [category, filters.filter1, page]);
 
   return (
     <div className="animate-fade-in space-y-12">
-      <div className="flex flex-wrap gap-3 mb-8 px-1">
-        {['全部', '动作', '喜剧', '爱情', '科幻', '动画', '悬疑', '惊悚'].map(f => (
+      <div className="flex flex-wrap gap-3 mb-8 px-1 overflow-x-auto no-scrollbar pb-2">
+        {['全部', '动作', '喜剧', '爱情', '科幻', '动画', '悬疑', '惊悚', '战争', '恐怖', '剧情'].map(f => (
           <button 
             key={f} 
             onClick={() => setFilters({ ...filters, filter1: f })}
-            className={`px-6 py-2 rounded-full text-xs font-black transition-all tracking-widest uppercase border ${filters.filter1 === f ? 'bg-brand text-black border-brand shadow-xl shadow-brand/20' : 'bg-white/5 text-gray-400 border-white/5 hover:bg-white/10 hover:text-white'}`}
+            className={`px-6 py-2 rounded-full text-xs font-black transition-all tracking-widest uppercase border whitespace-nowrap ${filters.filter1 === f ? 'bg-brand text-black border-brand shadow-xl shadow-brand/20' : 'bg-white/5 text-gray-400 border-white/5 hover:bg-white/10 hover:text-white'}`}
           >
             {f}
           </button>
@@ -212,7 +212,6 @@ const App: React.FC = () => {
   const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<VodItem[]>([]);
-  const [personProfile, setPersonProfile] = useState<PersonDetail | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [currentMovie, setCurrentMovie] = useState<VodDetail | null>(null);
   const [availableSources, setAvailableSources] = useState<PlaySource[]>([]);
@@ -252,21 +251,25 @@ const App: React.FC = () => {
        });
   }, []);
 
+  const isPlayRoute = location.pathname.startsWith('/play/');
+
   useEffect(() => {
-      const path = location.pathname.split('/')[1] || '';
-      if (path === 'play') {
-          const id = location.pathname.split('/')[2];
+      const pathParts = location.pathname.split('/');
+      const path = pathParts[1] || '';
+      
+      if (isPlayRoute) {
+          const id = pathParts[2];
           const state = location.state as any;
           if (id && (!currentMovie || String(currentMovie.vod_id) !== id)) {
               handleSelectMovie(id, state?.apiUrl, state?.vodName);
           }
       } else {
           setActiveTab(URL_TO_TAB[path] || 'home');
-          if (path !== 'play') setCurrentMovie(null); 
+          setCurrentMovie(null); // Clear movie context when not on play route
       }
   }, [location.pathname]);
 
-  // 同步观看历史：每当集数或影片改变时更新
+  // Sync history
   useEffect(() => {
       if (currentMovie && currentEpisodeIndex >= 0 && episodes[currentEpisodeIndex]) {
           const historyItem: HistoryItem = {
@@ -296,7 +299,6 @@ const App: React.FC = () => {
                   setEpisodes(allSources[initialIndex].episodes);
                   setCurrentMovie(main);
                   
-                  // 尝试从历史记录中恢复集数
                   const history = getHistory();
                   const inHistory = history.find(h => String(h.vod_id) === String(main.vod_id));
                   const savedIndex = inHistory ? inHistory.episode_index : parseInt(localStorage.getItem(`cine_last_episode_${main.vod_id}`) || '0');
@@ -333,84 +335,60 @@ const App: React.FC = () => {
       } catch (error) {} finally { setLoading(false); }
   };
 
-  const NavBar = ({ activeTab, onTabChange, onSettingsClick }: any) => {
-    const navItems = [ 
-        { id: 'home', label: '首页', icon: NavIcons.Home }, 
-        { id: 'movies', label: '电影', icon: NavIcons.Movie }, 
-        { id: 'series', label: '剧集', icon: NavIcons.Series }, 
-        { id: 'anime', label: '动漫', icon: NavIcons.Anime }, 
-        { id: 'variety', label: '综艺', icon: NavIcons.Variety }, 
-        { id: 'search', label: '搜索', icon: NavIcons.Search } 
-    ];
-    return (
-        <>
-            <nav className="fixed top-0 left-0 right-0 z-50 bg-[#020617]/90 backdrop-blur-3xl border-b border-white/5 hidden lg:block">
+  const navItems = [ 
+    { id: 'home', label: '首页', icon: NavIcons.Home }, 
+    { id: 'movies', label: '电影', icon: NavIcons.Movie }, 
+    { id: 'series', label: '剧集', icon: NavIcons.Series }, 
+    { id: 'anime', label: '动漫', icon: NavIcons.Anime }, 
+    { id: 'variety', label: '综艺', icon: NavIcons.Variety }, 
+    { id: 'search', label: '搜索', icon: NavIcons.Search } 
+  ];
+
+  return (
+      <div className="relative min-h-screen pb-24 lg:pb-16 overflow-x-hidden font-sans pt-14 lg:pt-16">
+          <nav className="fixed top-0 left-0 right-0 z-50 bg-[#020617]/90 backdrop-blur-3xl border-b border-white/5 hidden lg:block">
                 <div className="container mx-auto max-w-[1400px]">
                     <div className="flex items-center justify-between h-16 px-6">
-                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => onTabChange('home')}>
+                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
                             <div className="w-8 h-8 bg-brand rounded-lg flex items-center justify-center text-black font-black">C</div>
                             <span className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-brand to-cyan-400 tracking-tighter">CineStream</span>
                         </div>
                         <div className="flex items-center gap-1">
-                            {navItems.map(item => ( <button key={item.id} onClick={() => onTabChange(item.id)} className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-black transition-all tracking-widest uppercase ${activeTab === item.id ? 'bg-brand text-black shadow-xl shadow-brand/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>{item.icon}{item.label}</button> ))}
+                            {navItems.map(item => ( <button key={item.id} onClick={() => navigate(TAB_TO_URL[item.id])} className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-black transition-all tracking-widest uppercase ${activeTab === item.id ? 'bg-brand text-black shadow-xl shadow-brand/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>{item.icon}{item.label}</button> ))}
                         </div>
-                        <button onClick={onSettingsClick} className="text-gray-400 hover:text-white p-2.5 rounded-xl hover:bg-white/10 transition-all font-bold text-xs uppercase tracking-widest">Settings</button>
+                        <button onClick={() => setShowSettings(true)} className="text-gray-400 hover:text-white p-2.5 rounded-xl hover:bg-white/10 transition-all font-bold text-xs uppercase tracking-widest">Settings</button>
                     </div>
                 </div>
-            </nav>
-            <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0f111a]/95 backdrop-blur-2xl border-t border-white/5 safe-area-bottom">
+          </nav>
+
+          <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0f111a]/95 backdrop-blur-2xl border-t border-white/5 safe-area-bottom">
                 <div className="grid grid-cols-6 h-16">
                     {navItems.map(item => (
-                        <button key={item.id} onClick={() => onTabChange(item.id)} className={`flex flex-col items-center justify-center gap-1 transition-all duration-300 relative ${activeTab === item.id ? 'text-brand' : 'text-gray-500'}`}>
+                        <button key={item.id} onClick={() => navigate(TAB_TO_URL[item.id])} className={`flex flex-col items-center justify-center gap-1 transition-all duration-300 relative ${activeTab === item.id ? 'text-brand' : 'text-gray-500'}`}>
                             <div className={`${activeTab === item.id ? 'scale-110' : 'scale-100'}`}>{item.icon}</div>
                             <span className="text-[10px] font-black uppercase tracking-tight">{item.label}</span>
                             {activeTab === item.id && <div className="absolute top-0 w-8 h-0.5 bg-brand rounded-full shadow-[0_0_10px_#22c55e]"></div>}
                         </button>
                     ))}
                 </div>
-            </nav>
-        </>
-    );
-  };
-
-  return (
-      <div className="relative min-h-screen pb-24 lg:pb-16 overflow-x-hidden font-sans pt-14 lg:pt-16">
-          <NavBar activeTab={activeTab} onTabChange={(tab: string) => navigate(TAB_TO_URL[tab])} onSettingsClick={() => setShowSettings(true)} />
+          </nav>
+          
           <Suspense fallback={null}><SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} /></Suspense>
           
-          {/* 交互式右键菜单 */}
           {contextMenu.visible && contextMenu.item && (
-              <div 
-                  className="fixed z-[9999] bg-[#0f172a]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.6)] overflow-hidden animate-slide-up py-2 min-w-[200px]"
-                  style={{ 
-                    top: Math.min(contextMenu.y, window.innerHeight - 120), 
-                    left: Math.min(contextMenu.x, window.innerWidth - 220) 
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-              >
-                  <div className="px-4 py-2 border-b border-white/5 mb-1">
-                      <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">操作选项</p>
-                  </div>
-                  <button 
-                      onClick={(e) => handleRemoveHistory(e, contextMenu.item!)}
-                      className="w-full text-left px-4 py-3 text-sm text-red-400 font-bold hover:bg-red-500/10 flex items-center gap-3 transition-colors active:bg-red-500/20"
-                  >
+              <div className="fixed z-[9999] bg-[#0f172a]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden py-2 min-w-[200px]" style={{ top: Math.min(contextMenu.y, window.innerHeight - 120), left: Math.min(contextMenu.x, window.innerWidth - 220) }} onClick={(e) => e.stopPropagation()}>
+                  <button onClick={(e) => handleRemoveHistory(e, contextMenu.item!)} className="w-full text-left px-4 py-3 text-sm text-red-400 font-bold hover:bg-red-500/10 flex items-center gap-3 transition-colors">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
                       删除这条历史记录
                   </button>
-                  <button 
-                      onClick={() => setContextMenu(prev => ({ ...prev, visible: false }))}
-                      className="w-full text-left px-4 py-3 text-sm text-gray-400 font-bold hover:bg-white/5 transition-colors"
-                  >
-                      取消
-                  </button>
+                  <button onClick={() => setContextMenu(prev => ({ ...prev, visible: false }))} className="w-full text-left px-4 py-3 text-sm text-gray-400 font-bold hover:bg-white/5">取消</button>
               </div>
           )}
 
           <div className="relative z-10 container mx-auto px-4 lg:px-10 py-4 lg:py-8 max-w-[1600px]">
-              {location.pathname.startsWith('/play/') && (
+              {isPlayRoute && (
                   <section className="mb-12 animate-fade-in space-y-6">
-                      <div className="flex flex-col lg:flex-row bg-[#0f111a] rounded-[2rem] lg:rounded-[3rem] overflow-hidden border border-white/5 shadow-3xl relative">
+                      <div className="flex flex-col lg:flex-row bg-[#0f111a] rounded-[2rem] lg:rounded-[3rem] overflow-hidden border border-white/5 shadow-3xl relative min-h-[400px]">
                           <div className={`flex-1 min-w-0 bg-black relative transition-all duration-700 z-10 ${!showSidePanel ? 'lg:h-[720px]' : 'lg:h-[500px] h-auto aspect-video'}`}>
                               {loading && !currentMovie ? (
                                   <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center gap-6 animate-pulse">
@@ -419,15 +397,19 @@ const App: React.FC = () => {
                                   </div>
                               ) : (
                                   <Suspense fallback={<div className="w-full h-full bg-black"></div>}>
-                                      <VideoPlayer 
-                                        url={currentMovie && episodes[currentEpisodeIndex] ? episodes[currentEpisodeIndex].url : ''} 
-                                        poster={currentMovie?.vod_pic} 
-                                        title={currentMovie?.vod_name} 
-                                        episodeIndex={currentEpisodeIndex} 
-                                        vodId={currentMovie?.vod_id} 
-                                        onNext={() => currentEpisodeIndex < episodes.length - 1 && setCurrentEpisodeIndex(prev => prev + 1)} 
-                                        sourceType={availableSources[currentSourceIndex]?.name}
-                                      />
+                                      {episodes[currentEpisodeIndex] ? (
+                                        <VideoPlayer 
+                                            url={episodes[currentEpisodeIndex].url} 
+                                            poster={currentMovie?.vod_pic} 
+                                            title={currentMovie?.vod_name} 
+                                            episodeIndex={currentEpisodeIndex} 
+                                            vodId={currentMovie?.vod_id} 
+                                            onNext={() => currentEpisodeIndex < episodes.length - 1 && setCurrentEpisodeIndex(prev => prev + 1)} 
+                                            sourceType={availableSources[currentSourceIndex]?.name}
+                                        />
+                                      ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-gray-500">资源解析中...</div>
+                                      )}
                                   </Suspense>
                               )}
                           </div>
@@ -451,9 +433,6 @@ const App: React.FC = () => {
                                           </div> 
                                       )}
                                   </div>
-                                  <div className="p-4 text-center bg-black/10 border-t border-white/5">
-                                      <p className="text-[10px] text-gray-600 font-black tracking-[0.2em] uppercase">P2P 加速与弹幕系统已就绪</p>
-                                  </div>
                               </div>
                           )}
                       </div>
@@ -462,38 +441,21 @@ const App: React.FC = () => {
                   </section>
               )}
 
-              {activeTab === 'home' && !location.pathname.startsWith('/play/') && (
+              {activeTab === 'home' && !isPlayRoute && (
                   <div className="space-y-12">
                       {heroItems.length > 0 && <HeroBanner items={heroItems} onPlay={handleItemClick} />}
-                      
                       {watchHistory.length > 0 && (
-                          <HorizontalSection 
-                            title="继续观看 / RECENT WATCH" 
-                            items={watchHistory} 
-                            id="history" 
-                            onItemClick={handleItemClick} 
-                            onItemContextMenu={(e, item) => { 
-                                e.preventDefault(); 
-                                setContextMenu({ visible: true, x: e.clientX, y: e.clientY, item }); 
-                            }} 
-                          />
+                          <HorizontalSection title="继续观看 / RECENT WATCH" items={watchHistory} id="history" onItemClick={handleItemClick} onItemContextMenu={(e, item) => { e.preventDefault(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, item }); }} />
                       )}
-                      
                       {['movies', 'series', 'variety', 'anime'].map(cat => (
-                        <HorizontalSection 
-                            key={cat}
-                            title={`${TAB_NAME[cat]} / POPULAR ${cat.toUpperCase()}`}
-                            items={homeSections[cat] || []}
-                            id={cat}
-                            onItemClick={handleItemClick}
-                        />
+                        <HorizontalSection key={cat} title={`${TAB_NAME[cat]} / POPULAR ${cat.toUpperCase()}`} items={homeSections[cat] || []} id={cat} onItemClick={handleItemClick} />
                       ))}
                   </div>
               )}
 
-              {['movies', 'series', 'anime', 'variety'].includes(activeTab) && !location.pathname.startsWith('/play/') && <CategoryPage category={activeTab} onPlay={handleItemClick} />}
+              {['movies', 'series', 'anime', 'variety'].includes(activeTab) && !isPlayRoute && <CategoryPage category={activeTab} onPlay={handleItemClick} />}
 
-              {activeTab === 'search' && !location.pathname.startsWith('/play/') && (
+              {activeTab === 'search' && !isPlayRoute && (
                   <div className="animate-fade-in max-w-5xl mx-auto py-12">
                       <div className="flex gap-4 mb-12">
                           <form onSubmit={(e) => { e.preventDefault(); triggerSearch(searchQuery); }} className="relative flex-1 group">

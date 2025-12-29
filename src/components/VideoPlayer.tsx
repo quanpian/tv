@@ -16,7 +16,7 @@ interface VideoPlayerProps {
   doubanId?: string;
   vodId?: string | number;
   className?: string;
-  sourceType?: string; // 用于识别播放源，如 'ruyi'
+  sourceType?: string; // 保留 prop 但广告过滤逻辑改为用户提供的新逻辑
 }
 
 const ICONS = {
@@ -39,58 +39,41 @@ const DANMAKU_API = 'https://daili.laibo123.dpdns.org/5573108/api/v2/comment';
 const CACHE_TTL = 15 * 60 * 1000; 
 
 /**
- * 自定义去广告函数
+ * 替换为用户提供的最新去广告逻辑
  */
-function filterAdsFromM3U8(type: string, m3u8Content: string): string {
+function filterAdsFromM3U8(m3u8Content: string): string {
     if (!m3u8Content) return '';
-
     const lines = m3u8Content.split('\n');
     const filteredLines: string[] = [];
     let inAdBlock = false;
-
+    
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
-
-        // 1. 检测通用广告开始标记
-        if (line.includes('#EXT-X-CUE-OUT') || line.includes('#EXT-X-DISCONTINUITY')) {
-            inAdBlock = true;
+        
+        // 检测广告开始标记 (支持 CUE-OUT, SCTE35, DATERANGE)
+        if (line.includes('EXT-X-CUE-OUT') || 
+            line.includes('SCTE35') || 
+            (line.includes('DATERANGE') && line.includes('SCTE35'))) { 
+            inAdBlock = true; 
+            continue; 
+        }
+        
+        // 检测广告结束标记
+        if (line.includes('EXT-X-CUE-IN')) { 
+            inAdBlock = false; 
+            continue; 
+        }
+        
+        // 跳过广告区块内容或中断标记
+        if (inAdBlock || line.includes('EXT-X-DISCONTINUITY')) {
             continue;
         }
-
-        // 2. 检测广告结束标记
-        if (line.includes('#EXT-X-CUE-IN')) {
-            inAdBlock = false;
-            continue;
-        }
-
-        // 3. 跳过广告区块内容
-        if (inAdBlock) {
-            // 如果在广告块中又遇到了新的切片信息，且没有结束标记，我们继续跳过
-            // 这里可以增加对切片链接的特征判断
-            continue;
-        }
-
-        // 4. 针对特定源的自定义规则
-        if (type === 'ruyi') {
-            // 过滤如意源特定时长的广告片段
-            if (line.includes('EXTINF:5.640000') || line.includes('EXTINF:2.960000')) {
-                // 如果是时长行，我们需要连带跳过它下面的 URL 行
-                if (i + 1 < lines.length && !lines[i+1].startsWith('#')) {
-                    i++; // 跳过下一行（URL）
-                }
-                continue;
-            }
-        }
-
+        
         filteredLines.push(lines[i]);
     }
-
     return filteredLines.join('\n');
 }
 
-/**
- * 优化后的弹幕抓取函数
- */
 const fetchDanmaku = async (title: string, episodeIndex: number, vodId: string | number) => {
     const cacheKey = `cine_danmaku_${vodId}_${episodeIndex}`;
     try {
@@ -123,9 +106,7 @@ const fetchDanmaku = async (title: string, episodeIndex: number, vodId: string |
             return item;
         }).filter(d => d.text && d.text.length > 0 && d.text.length < 150);
 
-        try {
-            localStorage.setItem(cacheKey, JSON.stringify({ data: formatted, timestamp: Date.now() }));
-        } catch (e) {}
+        try { localStorage.setItem(cacheKey, JSON.stringify({ data: formatted, timestamp: Date.now() })); } catch (e) {}
         return formatted;
     } catch (e) { return []; }
 };
@@ -153,16 +134,8 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
   const loadDanmakuAsync = async (art: Artplayer) => {
       const plugin = (art.plugins as any).artplayerPluginDanmuku;
       if (!plugin || !propsRef.current.vodId) return;
-
-      const danmaku = await fetchDanmaku(
-          propsRef.current.title || '', 
-          propsRef.current.episodeIndex || 0, 
-          propsRef.current.vodId
-      );
-
-      if (danmaku.length > 0) {
-          plugin.config({ danmuku: danmaku });
-      }
+      const danmaku = await fetchDanmaku(propsRef.current.title || '', propsRef.current.episodeIndex || 0, propsRef.current.vodId);
+      if (danmaku.length > 0) plugin.config({ danmuku: danmaku });
   };
 
   const seekToSavedProgress = (art: Artplayer) => {
@@ -175,19 +148,11 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
   };
 
   useEffect(() => {
-      const art = artRef.current;
-      if (art && url && url !== art.url) {
-          art.switchUrl(url).then(() => {
-              seekToSavedProgress(art);
-              loadDanmakuAsync(art);
-          });
-      }
-  }, [url, episodeIndex, vodId]);
-
-  useEffect(() => {
       if (!containerRef.current || !url) return;
       
       const initPlayer = () => {
+          if (artRef.current) artRef.current.destroy(true);
+
           const DEFAULT_SKIP_HEAD = 90, DEFAULT_SKIP_TAIL = 120;
           let skipHead = parseInt(localStorage.getItem('art_skip_head') || String(DEFAULT_SKIP_HEAD));
           let skipTail = parseInt(localStorage.getItem('art_skip_tail') || String(DEFAULT_SKIP_TAIL));
@@ -198,54 +163,34 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
               fullscreen: true, fullscreenWeb: true, setting: true, pip: true,
               moreVideoAttr: { crossOrigin: 'anonymous', playsInline: true, 'webkit-playsinline': true } as any,
               plugins: [
-                  artplayerPluginDanmuku({
-                      danmuku: [], speed: 10, opacity: 0.8, fontSize: 24, visible: true, emitter: false,
-                  }),
+                  artplayerPluginDanmuku({ danmuku: [], speed: 10, opacity: 0.8, fontSize: 24, visible: true, emitter: false }),
               ],
               controls: [
-                 { 
-                    name: 'next-episode', 
-                    position: 'left', 
-                    index: 15, 
-                    html: ICONS.next, 
-                    tooltip: '下一集', 
-                    click: function () { if (latestOnNext.current) latestOnNext.current(); } 
-                 },
-                 { 
-                    name: 'danmaku-toggle', 
-                    position: 'right', 
-                    index: 10, 
-                    html: ICONS.danmaku, 
-                    tooltip: '显示/隐藏弹幕', 
-                    click: function () { 
+                 { name: 'next-episode', position: 'left', index: 15, html: ICONS.next, tooltip: '下一集', click: () => latestOnNext.current && latestOnNext.current() },
+                 { name: 'danmaku-toggle', position: 'right', index: 10, html: ICONS.danmaku, tooltip: '显示/隐藏弹幕', click: function () { 
                         const plugin = (this.plugins as any).artplayerPluginDanmuku;
                         if (plugin) { 
-                            if (plugin.visible) plugin.hide(); 
-                            else plugin.show(); 
+                            if (plugin.visible) plugin.hide(); else plugin.show(); 
                             this.notice.show = `弹幕已${plugin.visible ? '显示' : '隐藏'}`;
                         }
                     } 
                  }
               ],
               settings: [
-                  { html: '跳过片头', width: 250, tooltip: skipHead+'秒', icon: ICONS.skipStart, selector: SKIP_OPTIONS.map(o => ({ default: o.value === skipHead, html: o.html, url: o.value })), onSelect: function(item: any) { skipHead = item.url; localStorage.setItem('art_skip_head', String(skipHead)); return item.html; } },
-                  { html: '跳过片尾', width: 250, tooltip: skipTail+'秒', icon: ICONS.skipEnd, selector: SKIP_OPTIONS.map(o => ({ default: o.value === skipTail, html: o.html, url: o.value })), onSelect: function(item: any) { skipTail = item.url; localStorage.setItem('art_skip_tail', String(skipTail)); return item.html; } }
+                  { html: '跳过片头', width: 250, tooltip: skipHead+'秒', icon: ICONS.skipStart, selector: SKIP_OPTIONS.map(o => ({ default: o.value === skipHead, html: o.html, url: o.value })), onSelect: (item: any) => { skipHead = item.url; localStorage.setItem('art_skip_head', String(skipHead)); return item.html; } },
+                  { html: '跳过片尾', width: 250, tooltip: skipTail+'秒', icon: ICONS.skipEnd, selector: SKIP_OPTIONS.map(o => ({ default: o.value === skipTail, html: o.html, url: o.value })), onSelect: (item: any) => { skipTail = item.url; localStorage.setItem('art_skip_tail', String(skipTail)); return item.html; } }
               ],
               customType: {
-                  m3u8: function (video: HTMLVideoElement, url: string, art: any) {
+                  m3u8: function (video: HTMLVideoElement, m3u8Url: string, artInstance: any) {
                       if (Hls.isSupported()) {
-                          // 使用自定义 Loader 拦截并过滤 M3U8 广告
                           class AdBlockLoader extends (Hls.DefaultConfig.loader as any) {
-                              constructor(config: any) {
-                                  super(config);
-                              }
                               load(context: any, config: any, callbacks: any) {
                                   if (context.type === 'manifest' || context.type === 'level') {
                                       const originalOnSuccess = callbacks.onSuccess;
                                       callbacks.onSuccess = (response: any, stats: any, ctx: any) => {
                                           if (response.data && typeof response.data === 'string') {
-                                              // 调用去广告逻辑
-                                              response.data = filterAdsFromM3U8(sourceType, response.data);
+                                              // 调用最新提供的去广告逻辑
+                                              response.data = filterAdsFromM3U8(response.data);
                                           }
                                           originalOnSuccess(response, stats, ctx);
                                       };
@@ -253,60 +198,44 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
                                   super.load(context, config, callbacks);
                               }
                           }
-
-                          const hls = new Hls({ 
-                            enableWorker: true, 
-                            maxBufferLength: 30,
-                            loader: AdBlockLoader as any
-                          });
-
+                          const hls = new Hls({ enableWorker: true, maxBufferLength: 30, loader: AdBlockLoader as any });
                           if (P2PEngine && (P2PEngine as any).isSupported()) {
                               new (P2PEngine as any)(hls, { maxBufSize: 120 * 1024 * 1024, p2pEnabled: true });
                           }
-
-                          hls.loadSource(url); 
+                          hls.loadSource(m3u8Url); 
                           hls.attachMedia(video);
-                          art.hls = hls; 
-                          art.on('destroy', () => hls.destroy());
+                          artInstance.hls = hls; 
+                          artInstance.on('destroy', () => hls.destroy());
                       } else if (video.canPlayType('application/vnd.apple.mpegurl')) { 
-                          video.src = url; 
+                          video.src = m3u8Url; 
                       }
                   }
               },
           });
 
-          art.on('ready', () => {
-              seekToSavedProgress(art);
-              loadDanmakuAsync(art);
-          });
+          art.on('ready', () => { seekToSavedProgress(art); loadDanmakuAsync(art); });
 
-          art.on('video:timeupdate', function() {
+          art.on('video:timeupdate', () => {
               const key = getProgressKey();
               if (art.currentTime > 5) {
-                  if (art.duration > 30 && (art.duration - art.currentTime) < 10) {
-                      localStorage.removeItem(key);
-                  } else {
-                      localStorage.setItem(key, String(art.currentTime));
-                  }
+                  if (art.duration > 30 && (art.duration - art.currentTime) < 10) localStorage.removeItem(key);
+                  else localStorage.setItem(key, String(art.currentTime));
               }
               if (skipHead > 0 && art.duration > 300 && art.currentTime < skipHead && !art.userSeek) {
                   art.seek = skipHead;
                   art.notice.show = `已跳过片头 ${skipHead} 秒`;
               }
               if (skipTail > 0 && art.duration > 300 && (art.duration - art.currentTime) <= skipTail && !art.userSeek) {
-                  if (latestOnNext.current) { 
-                      localStorage.removeItem(key);
-                      latestOnNext.current(); 
-                  }
+                  if (latestOnNext.current) { localStorage.removeItem(key); latestOnNext.current(); }
               }
           });
 
           artRef.current = art;
-          return () => { if (artRef.current) artRef.current.destroy(true); };
       };
 
       initPlayer();
-  }, [vodId, sourceType]);
+      return () => { if (artRef.current) artRef.current.destroy(true); };
+  }, [url, vodId, sourceType]);
 
   return (
       <div className={`w-full aspect-video lg:aspect-auto lg:h-full bg-black group relative z-0 ${className || ''}`}>
@@ -321,15 +250,17 @@ const VideoPlayer = forwardRef((props: VideoPlayerProps, ref) => {
                 box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5) !important;
                 height: 60px !important;
                 padding: 0 16px !important;
+                position: relative;
+                z-index: 10;
             }
-            .art-progress { bottom: 70px !important; height: 5px !important; }
-            .art-progress-indicator { background: #22c55e !important; border: 3px solid #fff !important; width: 16px !important; height: 16px !important; box-shadow: 0 0 15px rgba(34, 197, 94, 0.8) !important; }
+            /* 进度条对齐控制栏顶部 */
+            .art-progress { bottom: 60px !important; height: 4px !important; z-index: 20; }
+            .art-progress-indicator { background: #22c55e !important; border: 3px solid #fff !important; width: 14px !important; height: 14px !important; box-shadow: 0 0 12px rgba(34, 197, 94, 0.8) !important; }
             .art-notice { background: rgba(34, 197, 94, 0.9) !important; border-radius: 100px !important; padding: 12px 28px !important; font-weight: 900 !important; font-size: 14px !important; letter-spacing: 0.1em !important; box-shadow: 0 10px 20px rgba(0,0,0,0.3) !important; }
-            
             @media (max-width: 768px) {
                 .art-bottom { padding: 0 10px 10px !important; }
                 .art-controls { height: 52px !important; border-radius: 16px !important; }
-                .art-progress { bottom: 62px !important; }
+                .art-progress { bottom: 52px !important; }
             }
           `}</style>
           <div ref={containerRef} className="w-full h-full" />
