@@ -24,7 +24,6 @@ const URL_TO_TAB: Record<string, string> = { '': 'home', 'dianying': 'movies', '
 const TAB_TO_URL: Record<string, string> = { 'home': '/', 'movies': '/dianying', 'series': '/dianshiju', 'anime': '/dongman', 'variety': '/zongyi', 'search': '/sousuo' };
 const TAB_NAME: Record<string, string> = { 'home': '首页', 'movies': '电影', 'series': '剧集', 'anime': '动漫', 'variety': '综艺', 'search': '搜索' };
 
-// ... HeroBanner and HorizontalSection component definitions remain the same ...
 const HeroBanner = React.memo(({ items, onPlay }: { items: VodItem[], onPlay: (item: VodItem) => void }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [detail, setDetail] = useState<any>(null);
@@ -109,109 +108,42 @@ const HorizontalSection = React.memo(({ title, items, id, onItemClick, onItemCon
         }
     };
     return (
-        <div className="mb-12 animate-fade-in group/section cv-auto" id={id}>
-            <div className="flex justify-between items-end mb-6 px-1">
-                <h3 className="text-2xl md:text-3xl font-black text-white flex items-center gap-4 border-l-4 border-brand pl-4 tracking-tighter uppercase">{title}</h3>
+        <div className="mb-8 animate-fade-in group/section cv-auto" id={id}>
+            <div className="flex justify-between items-end mb-4 px-1">
+                <h3 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2 border-l-4 border-brand pl-3">{title}</h3>
             </div>
             <div className="relative group">
-                 <button className="absolute left-0 top-1/2 -translate-y-1/2 z-20 bg-black/60 hover:bg-brand text-white p-3 rounded-full opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex border border-white/10 shadow-2xl -ml-5 backdrop-blur-md" onClick={() => scroll('left')}>
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+                 <button className="absolute left-0 top-1/2 -translate-y-1/2 z-20 bg-black/60 hover:bg-brand text-white p-2 rounded-full opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex border border-white/10 shadow-lg -ml-4" onClick={() => scroll('left')}>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
                 </button>
-                <div ref={scrollRef} className="flex gap-4 md:gap-8 overflow-x-auto pb-6 no-scrollbar snap-x scroll-smooth">
+                <div ref={scrollRef} className="flex gap-4 overflow-x-auto pb-4 no-scrollbar snap-x scroll-smooth">
                     {items.map((item) => (
-                        <div key={`${item.vod_id}-${(item as HistoryItem).last_updated || ''}`} className="flex-shrink-0 w-[140px] md:w-[220px] snap-start cursor-pointer relative group/card" onClick={() => onItemClick(item)} onContextMenu={(e) => onItemContextMenu && onItemContextMenu(e, item)}>
-                            <div className="aspect-[2/3] rounded-2xl overflow-hidden relative shadow-2xl bg-slate-900 border border-white/5 group-hover/card:border-brand/40 transition-all duration-500">
-                                <ImageWithFallback src={item.vod_pic} alt={item.vod_name} searchKeyword={item.vod_name} size="m" className="w-full h-full object-cover transform group-hover/card:scale-110 transition-transform duration-700" />
-                                <div className="absolute inset-0 bg-black/0 group-hover/card:bg-black/30 transition-colors"></div>
-                                {(item as any).vod_remarks && <div className="absolute top-2 right-2 bg-black/80 backdrop-blur-md text-[10px] font-black text-white px-2 py-0.5 rounded-lg border border-white/10 uppercase tracking-widest">{(item as any).vod_remarks}</div>}
-                                {(item as any).vod_score && <div className="absolute bottom-2 right-2 text-brand font-black text-sm drop-shadow-2xl">{(item as any).vod_score}</div>}
-                                {(item as HistoryItem).episode_name && ( <div className="absolute bottom-0 left-0 right-0 bg-brand/90 backdrop-blur-sm text-black text-[10px] font-black px-3 py-1.5 text-center truncate uppercase tracking-tighter shadow-2xl">{(item as HistoryItem).episode_name}</div> )}
+                        <div key={`${item.vod_id}-${(item as HistoryItem).last_updated || ''}`} className="flex-shrink-0 w-[140px] md:w-[180px] snap-start cursor-pointer relative group/card" onClick={() => onItemClick(item)} onContextMenu={(e) => onItemContextMenu && onItemContextMenu(e, item)}>
+                            <div className="aspect-[2/3] rounded-lg overflow-hidden relative shadow-lg bg-gray-900 border border-white/5 group-hover/card:border-brand/50 transition-all duration-300">
+                                <ImageWithFallback src={item.vod_pic} alt={item.vod_name} searchKeyword={item.vod_name} size="m" className="w-full h-full object-cover transform group-hover/card:scale-105 transition-transform duration-500" />
+                                <div className="absolute inset-0 bg-black/0 group-hover/card:bg-black/20 transition-colors"></div>
+                                {(item as any).vod_remarks && <div className="absolute top-1 right-1 bg-black/60 text-[10px] text-white px-1.5 py-0.5 rounded backdrop-blur-sm">{(item as any).vod_remarks}</div>}
+                                {(item as any).vod_score && <div className="absolute bottom-1 right-1 text-brand font-bold text-xs drop-shadow-md">{(item as any).vod_score}</div>}
+                                {(item as HistoryItem).episode_name && ( <div className="absolute bottom-0 left-0 right-0 bg-brand/90 text-black text-[10px] font-bold px-2 py-1 text-center">上次看到: {(item as HistoryItem).episode_name}</div> )}
                             </div>
-                            <h4 className="mt-4 text-sm font-black text-gray-200 truncate group-hover/card:text-brand transition-colors tracking-tight">{item.vod_name}</h4>
+                            <h4 className="mt-2 text-sm text-gray-200 font-medium truncate group-hover/card:text-brand transition-colors">{item.vod_name}</h4>
                         </div>
                     ))}
                 </div>
-                <button className="absolute right-0 top-1/2 -translate-y-1/2 z-20 bg-black/60 hover:bg-brand text-white p-3 rounded-full opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex border border-white/10 shadow-2xl -mr-5 backdrop-blur-md" onClick={() => scroll('right')}>
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                <button className="absolute right-0 top-1/2 -translate-y-1/2 z-20 bg-black/60 hover:bg-brand text-white p-2 rounded-full opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex border border-white/10 shadow-lg -mr-4" onClick={() => scroll('right')}>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
                 </button>
             </div>
         </div>
     );
 });
 
-const CategoryPage = ({ category, onPlay }: { category: string, onPlay: (item: VodItem) => void }) => {
-  const [items, setItems] = useState<VodItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState({ filter1: '全部', filter2: '全部' });
-
-  useEffect(() => {
-    setPage(1);
-    setItems([]);
-  }, [category, filters.filter1]);
-
-  useEffect(() => {
-    setLoading(true);
-    fetchCategoryItems(category, { ...filters, page }).then(res => {
-      if (page === 1) setItems(res);
-      else setItems(prev => [...prev, ...res]);
-      setLoading(false);
-    });
-  }, [category, filters.filter1, page]);
-
-  return (
-    <div className="animate-fade-in space-y-12">
-      <div className="flex flex-wrap gap-3 mb-8 px-1 overflow-x-auto no-scrollbar pb-2">
-        {['全部', '动作', '喜剧', '爱情', '科幻', '动画', '悬疑', '惊悚', '战争', '恐怖', '剧情'].map(f => (
-          <button 
-            key={f} 
-            onClick={() => setFilters({ ...filters, filter1: f })}
-            className={`px-6 py-2 rounded-full text-xs font-black transition-all tracking-widest uppercase border whitespace-nowrap ${filters.filter1 === f ? 'bg-brand text-black border-brand shadow-xl shadow-brand/20' : 'bg-white/5 text-gray-400 border-white/5 hover:bg-white/10 hover:text-white'}`}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
-      
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 md:gap-8">
-        {items.map((item, idx) => (
-          <div key={`${item.vod_id}-${idx}`} onClick={() => onPlay(item)} className="group cursor-pointer bg-[#0f111a] rounded-2xl overflow-hidden aspect-[2/3] relative border border-white/5 hover:border-brand/40 transition-all duration-500 shadow-2xl hover:-translate-y-2 flex flex-col">
-            <ImageWithFallback src={item.vod_pic} alt={item.vod_name} searchKeyword={item.vod_name} size="m" className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" />
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/80 to-transparent p-4 pt-12">
-              <h4 className="text-sm font-black text-white truncate group-hover:text-brand transition-colors tracking-tight">{item.vod_name}</h4>
-              <div className="flex justify-between items-center mt-2 text-[10px] font-black text-gray-500 uppercase tracking-tighter"><span>{item.vod_year || '2024'}</span><span className="text-brand">{item.vod_score || 'HOT'}</span></div>
-            </div>
-          </div>
-        ))}
-      </div>
-      
-      {loading && (
-        <div className="flex flex-col items-center justify-center py-20 gap-4">
-          <div className="animate-spin h-10 w-10 border-4 border-brand border-t-transparent rounded-full shadow-[0_0_15px_#22c55e]"></div>
-          <span className="text-gray-500 text-[10px] font-black tracking-[0.3em] uppercase">极速检索中...</span>
-        </div>
-      )}
-      
-      {!loading && items.length > 0 && (
-        <div className="flex justify-center pt-12">
-          <button 
-            onClick={() => setPage(p => p + 1)} 
-            className="group relative overflow-hidden bg-white/5 hover:bg-white/10 text-white font-black px-16 py-4 rounded-2xl transition-all active:scale-95 border border-white/10 uppercase text-xs tracking-[0.2em]"
-          >
-            <span className="relative z-10">加载更多 / LOAD MORE</span>
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer"></div>
-          </button>
-        </div>
-      )}
-    </div>
-  );
-};
-
 const App: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<VodItem[]>([]);
+  const [personProfile, setPersonProfile] = useState<PersonDetail | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [currentMovie, setCurrentMovie] = useState<VodDetail | null>(null);
   const [availableSources, setAvailableSources] = useState<PlaySource[]>([]);
@@ -224,20 +156,62 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [showSettings, setShowSettings] = useState(false);
   const resultsRef = useRef<HTMLDivElement>(null);
-  const [homeSections, setHomeSections] = useState<any>({ movies: [], series: [], anime: [], variety: [], all: [] });
+  const [homeSections, setHomeSections] = useState<any>({ movies: [], series: [], shortDrama: [], anime: [], variety: [] });
   const [heroItems, setHeroItems] = useState<VodItem[]>([]);
   const [watchHistory, setWatchHistory] = useState<HistoryItem[]>([]);
   
   const [contextMenu, setContextMenu] = useState<{ visible: boolean, x: number, y: number, item: VodItem | null }>({ visible: false, x: 0, y: 0, item: null });
 
+  useEffect(() => {
+    const SITE_NAME = 'CineStream AI';
+    let title = `${SITE_NAME} - 免费高清影视聚合平台 | 智能P2P加速秒播`;
+    let description = 'CineStream AI为您提供最新最全的高清电影、电视剧、动漫和综艺正版视频在线观看。采用先进P2P加速技术，实现极致秒播体验。';
+    let keywords = '免费电影,高清影视,在线观看,CineStream AI,影视搜索,Gemini AI';
+    let jsonLd: any = null;
+
+    if (currentMovie) {
+        const movieName = currentMovie.vod_name;
+        const episodeName = episodes[currentEpisodeIndex]?.title || '';
+        const director = currentMovie.vod_director || '未知';
+        const actor = currentMovie.vod_actor || '群星';
+        const year = currentMovie.vod_year || '2025';
+        const type = currentMovie.type_name || '影视';
+        const contentSnippet = currentMovie.vod_content?.replace(/<[^>]+>/g, '').slice(0, 100) || '';
+        title = `《${movieName}》_${episodeName}_高清正版视频在线观看 - ${SITE_NAME}`;
+        description = `${SITE_NAME}为您提供《${movieName}》高清在线观看。该片由${director}执导，${actor}等主演。剧情简介：${contentSnippet}... 更多精彩高清视频尽在${SITE_NAME}。`;
+        keywords = `${movieName},${movieName}在线观看,${movieName}高清版,${movieName}全集,${movieName}剧情,${type},${year}`;
+        jsonLd = [ { "@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [ { "@type": "ListItem", "position": 1, "name": "首页", "item": window.location.origin }, { "@type": "ListItem", "position": 2, "name": type, "item": `${window.location.origin}/${activeTab}` }, { "@type": "ListItem", "position": 3, "name": movieName, "item": window.location.href } ] }, { "@context": "https://schema.org", "@type": "VideoObject", "name": `${movieName} ${episodeName}`, "description": contentSnippet, "thumbnailUrl": currentMovie.vod_pic, "uploadDate": "2025-01-01T08:00:00+08:00", "duration": "PT45M", "contentUrl": window.location.href, "embedUrl": window.location.href, "interactionStatistic": { "@type": "InteractionCounter", "interactionType": { "@type": "WatchAction" }, "userInteractionCount": 12850 } } ];
+    } else if (activeTab === 'search' && searchQuery) {
+        title = `${searchQuery}的搜索结果 - ${SITE_NAME}影视搜索`;
+        description = `为您找到关于“${searchQuery}”的所有高清电影、电视剧及动漫资源，点击即可免费在线观看。`;
+    } else if (activeTab !== 'home') {
+        title = `${TAB_NAME[activeTab]}频道 - 2025最新${TAB_NAME[activeTab]}高清在线观看 - ${SITE_NAME}`;
+        description = `${SITE_NAME}${TAB_NAME[activeTab]}频道为您汇总全网最火爆的${TAB_NAME[activeTab]}资源，支持4K超清画质，智能推荐您喜爱的作品。`;
+    }
+
+    document.title = title;
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) metaDesc.setAttribute('content', description);
+    const metaKey = document.querySelector('meta[name="keywords"]');
+    if (metaKey) metaKey.setAttribute('content', keywords);
+    const existingScript = document.getElementById('json-ld-seo');
+    if (existingScript) existingScript.remove();
+    if (jsonLd) {
+        const script = document.createElement('script');
+        script.id = 'json-ld-seo';
+        script.type = 'application/ld+json';
+        script.text = JSON.stringify(jsonLd);
+        document.head.appendChild(script);
+    }
+  }, [currentMovie, activeTab, searchQuery, currentEpisodeIndex, episodes]);
+
   useEffect(() => { initVodSources(); setWatchHistory(getHistory()); }, []);
 
   useEffect(() => {
-    const handleGlobalClose = () => { if (contextMenu.visible) setContextMenu(prev => ({ ...prev, visible: false })); };
-    window.addEventListener('click', handleGlobalClose);
-    window.addEventListener('scroll', handleGlobalClose, true);
-    window.addEventListener('contextmenu', handleGlobalClose);
-    return () => { window.removeEventListener('click', handleGlobalClose); window.removeEventListener('scroll', handleGlobalClose, true); window.removeEventListener('contextmenu', handleGlobalClose); };
+    const handleGlobalClick = () => { if (contextMenu.visible) setContextMenu({ ...contextMenu, visible: false }); };
+    window.addEventListener('click', handleGlobalClick);
+    window.addEventListener('scroll', handleGlobalClick, true);
+    return () => { window.removeEventListener('click', handleGlobalClick); window.removeEventListener('scroll', handleGlobalClick, true); };
   }, [contextMenu.visible]);
 
   useEffect(() => {
@@ -245,19 +219,21 @@ const App: React.FC = () => {
        getHomeSections().then(initialData => {
            if (initialData) {
                setHomeSections(initialData);
-               setHeroItems(initialData.all?.slice(0, 10) || []);
+               const allItems = [ 
+                   ...(initialData.movies || []), 
+                   ...(initialData.series || []), 
+                   ...(initialData.anime || []) 
+               ];
+               setHeroItems(allItems.slice(0, 10));
            }
            setLoading(false);
        });
   }, []);
 
-  const isPlayRoute = location.pathname.startsWith('/play/');
-
   useEffect(() => {
       const pathParts = location.pathname.split('/');
       const path = pathParts[1] || '';
-      
-      if (isPlayRoute) {
+      if (path === 'play') {
           const id = pathParts[2];
           const state = location.state as any;
           if (id && (!currentMovie || String(currentMovie.vod_id) !== id)) {
@@ -265,25 +241,10 @@ const App: React.FC = () => {
           }
       } else {
           setActiveTab(URL_TO_TAB[path] || 'home');
-          setCurrentMovie(null); // Clear movie context when not on play route
+          if (path !== 'play') setCurrentMovie(null); 
+          setHasSearched(activeTab === 'search');
       }
   }, [location.pathname]);
-
-  // Sync history
-  useEffect(() => {
-      if (currentMovie && currentEpisodeIndex >= 0 && episodes[currentEpisodeIndex]) {
-          const historyItem: HistoryItem = {
-              ...currentMovie,
-              episode_index: currentEpisodeIndex,
-              episode_name: episodes[currentEpisodeIndex].title,
-              last_updated: Date.now(),
-              source_index: currentSourceIndex
-          };
-          const updated = addToHistory(historyItem);
-          setWatchHistory(updated);
-          localStorage.setItem(`cine_last_episode_${currentMovie.vod_id}`, String(currentEpisodeIndex));
-      }
-  }, [currentEpisodeIndex, currentMovie, currentSourceIndex, episodes]);
 
   const handleSelectMovie = async (id: number | string, apiUrl?: string, vodName?: string) => {
       setLoading(true);
@@ -298,29 +259,31 @@ const App: React.FC = () => {
                   setCurrentSourceIndex(initialIndex);
                   setEpisodes(allSources[initialIndex].episodes);
                   setCurrentMovie(main);
-                  
-                  const history = getHistory();
-                  const inHistory = history.find(h => String(h.vod_id) === String(main.vod_id));
-                  const savedIndex = inHistory ? inHistory.episode_index : parseInt(localStorage.getItem(`cine_last_episode_${main.vod_id}`) || '0');
-                  
+                  const savedIndex = parseInt(localStorage.getItem(`cine_last_episode_${main.vod_id}`) || '0');
                   setCurrentEpisodeIndex((!isNaN(savedIndex) && savedIndex >= 0 && savedIndex < allSources[initialIndex].episodes.length) ? savedIndex : 0);
               }
           }
-      } catch (error) {
-          console.error("Movie detail error", error);
-      } finally { setLoading(false); }
+      } catch (error) {} finally { setLoading(false); }
   };
 
   const handleItemClick = (item: VodItem) => {
+      if (item.type_name === 'celebrity') {
+        setLoading(true);
+        fetchPersonDetail(item.vod_id).then(detail => {
+            if (detail) { setPersonProfile(detail); setSearchResults(detail.works || []); }
+            setLoading(false);
+        });
+        return;
+      }
+      // 关键修复：通过 navigate 触发路由变化，由 useEffect 统一处理数据加载
       navigate(`/play/${item.vod_id}`, { state: { apiUrl: item.api_url, vodName: item.vod_name } });
   };
 
   const handleRemoveHistory = (e: React.MouseEvent, item: VodItem) => {
-      e.preventDefault();
       e.stopPropagation();
       const updated = removeFromHistory(item.vod_id);
       setWatchHistory(updated);
-      setContextMenu(prev => ({ ...prev, visible: false }));
+      setContextMenu({ ...contextMenu, visible: false });
   };
 
   const triggerSearch = async (query: string) => {
@@ -328,6 +291,8 @@ const App: React.FC = () => {
       setSearchQuery(query);
       setLoading(true);
       setHasSearched(true);
+      setPersonProfile(null); 
+      if (activeTab !== 'search') navigate(TAB_TO_URL['search']);
       try {
           const results = await getAggregatedSearch(query);
           setSearchResults(results);
@@ -335,150 +300,165 @@ const App: React.FC = () => {
       } catch (error) {} finally { setLoading(false); }
   };
 
-  const navItems = [ 
-    { id: 'home', label: '首页', icon: NavIcons.Home }, 
-    { id: 'movies', label: '电影', icon: NavIcons.Movie }, 
-    { id: 'series', label: '剧集', icon: NavIcons.Series }, 
-    { id: 'anime', label: '动漫', icon: NavIcons.Anime }, 
-    { id: 'variety', label: '综艺', icon: NavIcons.Variety }, 
-    { id: 'search', label: '搜索', icon: NavIcons.Search } 
-  ];
-
-  return (
-      <div className="relative min-h-screen pb-24 lg:pb-16 overflow-x-hidden font-sans pt-14 lg:pt-16">
-          <nav className="fixed top-0 left-0 right-0 z-50 bg-[#020617]/90 backdrop-blur-3xl border-b border-white/5 hidden lg:block">
+  const NavBar = ({ activeTab, onTabChange, onSettingsClick }: any) => {
+    const navItems = [ 
+        { id: 'home', label: '首页', icon: NavIcons.Home }, 
+        { id: 'movies', label: '电影', icon: NavIcons.Movie }, 
+        { id: 'series', label: '剧集', icon: NavIcons.Series }, 
+        { id: 'anime', label: '动漫', icon: NavIcons.Anime }, 
+        { id: 'variety', label: '综艺', icon: NavIcons.Variety }, 
+        { id: 'search', label: '搜索', icon: NavIcons.Search } 
+    ];
+    return (
+        <>
+            {/* Desktop Header */}
+            <nav className="fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-xl border-b border-white/5 hidden lg:block">
                 <div className="container mx-auto max-w-[1400px]">
-                    <div className="flex items-center justify-between h-16 px-6">
-                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
-                            <div className="w-8 h-8 bg-brand rounded-lg flex items-center justify-center text-black font-black">C</div>
-                            <span className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-brand to-cyan-400 tracking-tighter">CineStream</span>
+                    <div className="flex items-center justify-between h-16 px-4">
+                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => onTabChange('home')}><span className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-brand to-cyan-400">CineStream</span></div>
+                        <div className="flex items-center gap-1 absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                            {navItems.map(item => ( <button key={item.id} onClick={() => onTabChange(item.id)} className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${activeTab === item.id ? 'bg-white/10 text-brand' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>{item.icon}{item.label}</button> ))}
                         </div>
-                        <div className="flex items-center gap-1">
-                            {navItems.map(item => ( <button key={item.id} onClick={() => navigate(TAB_TO_URL[item.id])} className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-black transition-all tracking-widest uppercase ${activeTab === item.id ? 'bg-brand text-black shadow-xl shadow-brand/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>{item.icon}{item.label}</button> ))}
-                        </div>
-                        <button onClick={() => setShowSettings(true)} className="text-gray-400 hover:text-white p-2.5 rounded-xl hover:bg-white/10 transition-all font-bold text-xs uppercase tracking-widest">Settings</button>
+                        <button onClick={onSettingsClick} className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-white/10">{NavIcons.Settings}</button>
                     </div>
                 </div>
-          </nav>
+            </nav>
 
-          <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0f111a]/95 backdrop-blur-2xl border-t border-white/5 safe-area-bottom">
+            {/* Mobile Header (Title only) */}
+            <header className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-md h-14 flex items-center justify-between px-5 border-b border-white/5">
+                <span className="text-xl font-black bg-clip-text text-transparent bg-gradient-to-r from-brand to-cyan-400">CineStream</span>
+                <button onClick={onSettingsClick} className="text-gray-400 hover:text-white p-1.5">{NavIcons.Settings}</button>
+            </header>
+
+            {/* Mobile Bottom TabBar */}
+            <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0f111a]/95 backdrop-blur-2xl border-t border-white/5 safe-area-bottom">
                 <div className="grid grid-cols-6 h-16">
                     {navItems.map(item => (
-                        <button key={item.id} onClick={() => navigate(TAB_TO_URL[item.id])} className={`flex flex-col items-center justify-center gap-1 transition-all duration-300 relative ${activeTab === item.id ? 'text-brand' : 'text-gray-500'}`}>
+                        <button 
+                            key={item.id} 
+                            onClick={() => onTabChange(item.id)} 
+                            className={`flex flex-col items-center justify-center gap-1 transition-all duration-300 ${activeTab === item.id ? 'text-brand' : 'text-gray-500'}`}
+                        >
                             <div className={`${activeTab === item.id ? 'scale-110' : 'scale-100'}`}>{item.icon}</div>
-                            <span className="text-[10px] font-black uppercase tracking-tight">{item.label}</span>
-                            {activeTab === item.id && <div className="absolute top-0 w-8 h-0.5 bg-brand rounded-full shadow-[0_0_10px_#22c55e]"></div>}
+                            <span className="text-[10px] font-medium">{item.label}</span>
+                            {activeTab === item.id && <div className="w-1 h-1 rounded-full bg-brand absolute top-1"></div>}
                         </button>
                     ))}
                 </div>
-          </nav>
-          
+            </nav>
+        </>
+    );
+  };
+
+  return (
+      <div className="relative min-h-screen pb-24 lg:pb-16 overflow-x-hidden font-sans pt-14 lg:pt-16">
+          <NavBar activeTab={activeTab} onTabChange={(tab: string) => navigate(TAB_TO_URL[tab])} onSettingsClick={() => setShowSettings(true)} />
           <Suspense fallback={null}><SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} /></Suspense>
           
+          {/* Context Menu Component */}
           {contextMenu.visible && contextMenu.item && (
-              <div className="fixed z-[9999] bg-[#0f172a]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden py-2 min-w-[200px]" style={{ top: Math.min(contextMenu.y, window.innerHeight - 120), left: Math.min(contextMenu.x, window.innerWidth - 220) }} onClick={(e) => e.stopPropagation()}>
-                  <button onClick={(e) => handleRemoveHistory(e, contextMenu.item!)} className="w-full text-left px-4 py-3 text-sm text-red-400 font-bold hover:bg-red-500/10 flex items-center gap-3 transition-colors">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
-                      删除这条历史记录
+              <div 
+                  className="fixed z-[9999] bg-gray-900/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl overflow-hidden animate-fade-in py-1.5 min-w-[160px]"
+                  style={{ 
+                    top: Math.min(contextMenu.y, window.innerHeight - 100), 
+                    left: Math.min(contextMenu.x, window.innerWidth - 170) 
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+              >
+                  <button 
+                      onClick={(e) => handleRemoveHistory(e, contextMenu.item!)}
+                      className="w-full text-left px-5 py-3 text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-3 transition-colors active:bg-red-500/20"
+                  >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                      删除观看记录
                   </button>
-                  <button onClick={() => setContextMenu(prev => ({ ...prev, visible: false }))} className="w-full text-left px-4 py-3 text-sm text-gray-400 font-bold hover:bg-white/5">取消</button>
+                  <div className="h-px bg-white/5 my-1 mx-2"></div>
+                  <button 
+                      onClick={() => setContextMenu({ ...contextMenu, visible: false })}
+                      className="w-full text-left px-5 py-3 text-xs text-gray-500 hover:bg-white/5 transition-colors active:bg-white/10"
+                  >
+                      取消
+                  </button>
               </div>
           )}
 
-          <div className="relative z-10 container mx-auto px-4 lg:px-10 py-4 lg:py-8 max-w-[1600px]">
-              {isPlayRoute && (
-                  <section className="mb-12 animate-fade-in space-y-6">
-                      <div className="flex flex-col lg:flex-row bg-[#0f111a] rounded-[2rem] lg:rounded-[3rem] overflow-hidden border border-white/5 shadow-3xl relative min-h-[400px]">
-                          <div className={`flex-1 min-w-0 bg-black relative transition-all duration-700 z-10 ${!showSidePanel ? 'lg:h-[720px]' : 'lg:h-[500px] h-auto aspect-video'}`}>
-                              {loading && !currentMovie ? (
-                                  <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center gap-6 animate-pulse">
-                                      <div className="w-16 h-16 border-4 border-brand border-t-transparent rounded-full animate-spin shadow-[0_0_20px_#22c55e]"></div>
-                                      <span className="text-gray-500 font-black text-xs tracking-[0.3em] uppercase">深度检索极致片源...</span>
+          <div className="relative z-10 container mx-auto px-4 lg:px-6 py-4 lg:py-6 max-w-[1400px]">
+              {currentMovie && (
+                  <section className="mb-12 animate-fade-in space-y-4 lg:space-y-6 mt-0 lg:mt-4">
+                      <h1 className="sr-only">{currentMovie.vod_name} {episodes[currentEpisodeIndex]?.title} 高清在线观看</h1>
+                      
+                      <div className="flex flex-col lg:flex-row gap-0 items-stretch bg-[#0f111a] rounded-xl lg:rounded-2xl overflow-hidden border border-white/5 shadow-[0_30px_60px_rgba(0,0,0,0.5)] transition-all duration-300 relative">
+                          <div className={`flex-1 min-w-0 bg-black relative group transition-all duration-300 z-10 ${!showSidePanel ? 'lg:h-[650px]' : 'lg:h-[500px] h-auto aspect-video'}`}>
+                              <Suspense fallback={<div className="w-full h-full bg-black flex items-center justify-center animate-pulse"></div>}>
+                                  <VideoPlayer url={currentMovie.vod_play_url ? availableSources[currentSourceIndex]?.episodes[currentEpisodeIndex]?.url : ''} poster={currentMovie.vod_pic} title={currentMovie.vod_name} episodeIndex={currentEpisodeIndex} vodId={currentMovie.vod_id} onEnded={() => currentEpisodeIndex < episodes.length - 1 && setCurrentEpisodeIndex(prev => prev + 1)} onNext={() => currentEpisodeIndex < episodes.length - 1 && setCurrentEpisodeIndex(prev => prev + 1)} />
+                              </Suspense>
+                              {!showSidePanel && (
+                                  <div className="absolute top-4 right-4 lg:top-6 lg:right-6 z-30 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                                      <button onClick={() => setShowSidePanel(true)} className="flex items-center gap-2 px-4 py-2 lg:px-5 lg:py-2.5 rounded-full bg-brand/90 backdrop-blur-md text-black font-black shadow-2xl hover:bg-brand transition-all text-xs lg:text-sm tracking-wide">展开选集<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" /></svg></button>
                                   </div>
-                              ) : (
-                                  <Suspense fallback={<div className="w-full h-full bg-black"></div>}>
-                                      {episodes[currentEpisodeIndex] ? (
-                                        <VideoPlayer 
-                                            url={episodes[currentEpisodeIndex].url} 
-                                            poster={currentMovie?.vod_pic} 
-                                            title={currentMovie?.vod_name} 
-                                            episodeIndex={currentEpisodeIndex} 
-                                            vodId={currentMovie?.vod_id} 
-                                            onNext={() => currentEpisodeIndex < episodes.length - 1 && setCurrentEpisodeIndex(prev => prev + 1)} 
-                                            sourceType={availableSources[currentSourceIndex]?.name}
-                                        />
-                                      ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-gray-500">资源解析中...</div>
-                                      )}
-                                  </Suspense>
                               )}
                           </div>
-                          {showSidePanel && currentMovie && (
-                              <div className="w-full lg:w-[400px] flex flex-col border-l border-white/10 bg-[#0f111a]/80 backdrop-blur-3xl h-[450px] lg:h-auto animate-fade-in">
-                                  <div className="flex bg-black/20">
-                                      <button onClick={() => setSidePanelTab('episodes')} className={`flex-1 py-5 text-xs font-black tracking-widest uppercase transition-all relative ${sidePanelTab === 'episodes' ? 'text-brand' : 'text-gray-500'}`}>剧集选择{sidePanelTab === 'episodes' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand shadow-[0_0_10px_#22c55e]"></div>}</button>
-                                      <button onClick={() => setSidePanelTab('sources')} className={`flex-1 py-5 text-xs font-black tracking-widest uppercase transition-all relative ${sidePanelTab === 'sources' ? 'text-brand' : 'text-gray-500'}`}>极致线路{sidePanelTab === 'sources' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand shadow-[0_0_10px_#22c55e]"></div>}</button>
+
+                          {showSidePanel && (
+                              <div className="w-full lg:w-[360px] flex flex-col border-l border-white/10 bg-[#121620] relative z-0 h-[400px] lg:h-auto">
+                                  <div className="flex items-center justify-between p-3 lg:p-4 border-b border-white/5 bg-black/20">
+                                      <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-brand shadow-[0_0_8px_#22c55e]"></div><h3 className="text-xs lg:text-sm font-bold text-gray-200">正在播放</h3></div>
+                                      <button onClick={() => setShowSidePanel(false)} className="p-1.5 rounded-lg text-gray-500 hover:text-white transition-all"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
                                   </div>
-                                  <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
-                                      {sidePanelTab === 'episodes' ? ( 
-                                          <div className="grid grid-cols-4 lg:grid-cols-4 gap-4">{episodes.map((ep) => ( 
-                                              <button key={ep.index} onClick={() => setCurrentEpisodeIndex(ep.index)} className={`h-12 rounded-xl border text-xs font-black transition-all shadow-lg ${currentEpisodeIndex === ep.index ? 'bg-brand text-black border-brand scale-105' : 'bg-white/5 text-gray-400 border-white/5 hover:text-brand active:scale-95'}`}>{ep.title.replace('第', '').replace('集', '')}</button> ))}
-                                          </div> 
-                                      ) : ( 
-                                          <div className="space-y-4">{availableSources.map((source, idx) => ( 
-                                              <button key={idx} onClick={() => { setCurrentSourceIndex(idx); setEpisodes(source.episodes); setSidePanelTab('episodes'); }} className={`w-full text-left p-5 rounded-2xl border transition-all flex justify-between items-center group ${currentSourceIndex === idx ? 'bg-brand/10 border-brand/40 text-brand' : 'bg-white/5 border-white/5 text-gray-400'}`}>
-                                                  <div className="font-black text-xs truncate uppercase tracking-tight">{source.name}</div>
-                                                  <div className={`w-2 h-2 rounded-full ${currentSourceIndex === idx ? 'bg-brand animate-pulse shadow-[0_0_8px_#22c55e]' : 'bg-white/10'}`}></div>
-                                              </button> ))}
-                                          </div> 
-                                      )}
+                                  <div className="flex bg-black/10">
+                                      <button onClick={() => setSidePanelTab('episodes')} className={`flex-1 py-3 lg:py-3.5 text-[10px] lg:text-xs font-black tracking-widest uppercase transition-all relative ${sidePanelTab === 'episodes' ? 'text-brand' : 'text-gray-500'}`}>选集{sidePanelTab === 'episodes' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand shadow-[0_0_10px_#22c55e]"></div>}</button>
+                                      <button onClick={() => setSidePanelTab('sources')} className={`flex-1 py-3 lg:py-3.5 text-[10px] lg:text-xs font-black tracking-widest uppercase transition-all relative ${sidePanelTab === 'sources' ? 'text-brand' : 'text-gray-500'}`}>播放源{sidePanelTab === 'sources' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand shadow-[0_0_10px_#22c55e]"></div>}</button>
                                   </div>
+                                  <div className="flex-1 overflow-y-auto custom-scrollbar p-3 lg:p-4 bg-black/5">
+                                      {sidePanelTab === 'episodes' ? ( <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-4 gap-2">{episodes.map((ep) => ( <button key={ep.index} onClick={() => setCurrentEpisodeIndex(ep.index)} className={`h-9 lg:h-10 rounded-md border text-[10px] lg:text-[11px] font-bold transition-all truncate px-1 flex items-center justify-center ${currentEpisodeIndex === ep.index ? 'bg-brand text-black border-brand shadow-[0_4px_12px_rgba(34,197,94,0.3)]' : 'bg-[#1a1f2e] text-gray-400 border-white/5 active:border-brand/40 hover:text-brand'}`} title={ep.title}>{ep.title.replace('第', '').replace('集', '')}</button> ))}</div> ) : ( <div className="space-y-2.5">{availableSources.map((source, idx) => ( <button key={idx} onClick={() => { setCurrentSourceIndex(idx); setEpisodes(source.episodes); setSidePanelTab('episodes'); }} className={`w-full text-left p-3 lg:p-4 rounded-xl border transition-all flex justify-between items-center group ${currentSourceIndex === idx ? 'bg-brand/10 border-brand/50 text-brand' : 'bg-[#1a1f2e] border-white/5 text-gray-400 active:bg-white/5'}`}><div className="min-w-0"><div className={`font-black text-[10px] lg:text-xs mb-1 truncate ${currentSourceIndex === idx ? 'text-brand' : 'text-gray-200'}`}>{source.name}</div><div className="text-[9px] lg:text-[10px] text-gray-500 font-mono opacity-60">{source.episodes.length} 集资源</div></div>{currentSourceIndex === idx ? ( <div className="flex items-center gap-1"><span className="text-[9px] lg:text-[10px] font-bold uppercase">Active</span><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 lg:w-4 lg:h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg></div> ) : ( <div className="w-2 h-2 rounded-full bg-white/10"></div> )}</button> ))}</div> )}
+                                  </div>
+                                  <div className="p-2 lg:p-3 text-center border-t border-white/5 bg-black/20"><p className="text-[9px] lg:text-[10px] text-gray-600 font-medium">智能 P2P 加速已开启</p></div>
                               </div>
                           )}
                       </div>
-                      {currentMovie && <MovieInfoCard movie={currentMovie} onSearch={(k) => navigate('/sousuo', { state: { query: k } })} />}
+                      <MovieInfoCard movie={currentMovie} onSearch={triggerSearch} />
                       <Suspense fallback={null}><GeminiChat currentMovie={currentMovie} /></Suspense>
                   </section>
               )}
 
-              {activeTab === 'home' && !isPlayRoute && (
-                  <div className="space-y-12">
+              {activeTab === 'home' && !currentMovie && (
+                  <>
                       {heroItems.length > 0 && <HeroBanner items={heroItems} onPlay={handleItemClick} />}
-                      {watchHistory.length > 0 && (
-                          <HorizontalSection title="继续观看 / RECENT WATCH" items={watchHistory} id="history" onItemClick={handleItemClick} onItemContextMenu={(e, item) => { e.preventDefault(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, item }); }} />
-                      )}
-                      {['movies', 'series', 'variety', 'anime'].map(cat => (
-                        <HorizontalSection key={cat} title={`${TAB_NAME[cat]} / POPULAR ${cat.toUpperCase()}`} items={homeSections[cat] || []} id={cat} onItemClick={handleItemClick} />
-                      ))}
-                  </div>
+                      {watchHistory.length > 0 && <HorizontalSection title="继续观看" items={watchHistory} id="history" onItemClick={handleItemClick} onItemContextMenu={(e, item) => { e.preventDefault(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, item }); }} />}
+                      <HorizontalSection title="热门电影" items={homeSections.movies || []} id="movies" onItemClick={handleItemClick} />
+                      <HorizontalSection title="热播剧集" items={homeSections.series || []} id="series" onItemClick={handleItemClick} />
+                      <HorizontalSection title="热门动漫" items={homeSections.anime || []} id="anime" onItemClick={handleItemClick} />
+                      <HorizontalSection title="精选综艺" items={homeSections.variety || []} id="variety" onItemClick={handleItemClick} />
+                  </>
               )}
-
-              {['movies', 'series', 'anime', 'variety'].includes(activeTab) && !isPlayRoute && <CategoryPage category={activeTab} onPlay={handleItemClick} />}
-
-              {activeTab === 'search' && !isPlayRoute && (
-                  <div className="animate-fade-in max-w-5xl mx-auto py-12">
-                      <div className="flex gap-4 mb-12">
+              
+              {activeTab === 'search' && !currentMovie && (
+                  <div className="animate-fade-in max-w-5xl mx-auto">
+                      <div className="flex gap-2 lg:gap-4 mb-6 lg:mb-8">
                           <form onSubmit={(e) => { e.preventDefault(); triggerSearch(searchQuery); }} className="relative flex-1 group">
-                              <div className="absolute inset-y-0 left-0 pl-6 flex items-center pointer-events-none text-gray-500 group-focus-within:text-brand transition-colors"><NavIcons.Search /></div>
-                              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="全网搜索高清资源、明星、导演..." className="w-full bg-[#0f111a] border border-white/10 rounded-3xl py-6 pl-14 pr-8 text-white text-lg font-black focus:border-brand/60 focus:ring-8 focus:ring-brand/5 shadow-3xl transition-all" />
+                              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-400 group-focus-within:text-brand transition-colors"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg></div>
+                              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="搜索电影、剧集、综艺..." className="w-full bg-[#121620] border border-white/10 rounded-xl py-3 lg:py-4 pl-12 pr-4 text-white text-sm focus:outline-none focus:border-brand/50 shadow-xl transition-all" />
                           </form>
-                          <button onClick={() => triggerSearch(searchQuery)} className="bg-brand hover:bg-brand-hover text-black font-black px-12 rounded-3xl transition-all active:scale-95 shadow-[0_10px_30px_rgba(34,197,94,0.3)]">搜索</button>
+                          <button onClick={() => triggerSearch(searchQuery)} className="bg-brand hover:bg-brand-hover text-black font-bold px-5 lg:px-8 rounded-xl transition-all active:scale-95 shadow-[0_0_15px_rgba(34,197,94,0.3)] whitespace-nowrap text-sm">搜索</button>
                       </div>
                       <div ref={resultsRef}>
-                          {loading ? <div className="flex justify-center py-40"><div className="animate-spin h-12 w-12 border-4 border-brand border-t-transparent rounded-full shadow-[0_0_20px_#22c55e]"></div></div> : (
-                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-                                  {searchResults.map((item, idx) => (
-                                      <div key={`${item.vod_id}-${idx}`} onClick={() => handleItemClick(item)} className="group cursor-pointer bg-[#0f111a] rounded-2xl overflow-hidden aspect-[2/3] relative border border-white/5 hover:border-brand/40 transition-all duration-500 shadow-2xl hover:-translate-y-2 flex flex-col">
-                                          <ImageWithFallback src={item.vod_pic} alt={item.vod_name} searchKeyword={item.vod_name} size="m" className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" />
-                                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/80 to-transparent p-4 pt-12">
-                                              <h4 className="text-sm font-black text-white truncate group-hover:text-brand transition-colors tracking-tight">{item.vod_name}</h4>
-                                              <div className="flex justify-between items-center mt-2 text-[10px] font-black text-gray-500"><span>{item.vod_year || '2024'}</span><span className="text-brand">{item.vod_score || ''}</span></div>
-                                          </div>
+                          {loading ? <div className="flex justify-center py-20"><div className="animate-spin h-10 w-10 border-4 border-brand border-t-transparent rounded-full"></div></div> : (
+                              <>
+                                  {searchResults.length > 0 ? (
+                                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 lg:gap-6">
+                                          {searchResults.map((item) => (
+                                              <div key={item.vod_id} onClick={() => handleItemClick(item)} className="group cursor-pointer bg-gray-900 rounded-xl overflow-hidden aspect-[2/3] relative border border-white/5 hover:border-brand/50 transition-all duration-300 shadow-lg">
+                                                  <ImageWithFallback src={item.vod_pic || ''} alt={item.vod_name} searchKeyword={item.vod_name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                                                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/80 to-transparent p-2.5 pt-10">
+                                                      <h4 className="text-xs lg:text-sm font-bold text-white truncate group-hover:text-brand transition-colors">{item.vod_name}</h4>
+                                                      <div className="flex justify-between items-center mt-1 text-[10px] text-gray-400"><span>{item.vod_year || 'N/A'}</span><span className="bg-white/10 px-1 py-0.5 rounded">{item.type_name || '影视'}</span></div>
+                                                  </div>
+                                              </div>
+                                          ))}
                                       </div>
-                                  ))}
-                              </div>
+                                  ) : (hasSearched && <div className="text-center py-20 text-gray-500">未找到相关内容</div>)}
+                              </>
                           )}
-                          {hasSearched && !loading && searchResults.length === 0 && <div className="text-center py-40 text-gray-600 font-black tracking-widest uppercase">资源未命中，请更换关键词尝试</div>}
                       </div>
                   </div>
               )}
